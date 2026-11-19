@@ -103,10 +103,15 @@ def pdf_sections(pdf_path: str | Path) -> list[dict[str, Any]]:
     if not lines:
         return []
     body = statistics.median(s for _, s, _, _ in lines)
+    dcfg = get_config()["docs"]
     sections: list[dict[str, Any]] = []
     cur = {"title": Path(pdf_path).stem, "text": [], "page": 1}
     for text, size, bold, pno in lines:
-        is_heading = len(text.split()) <= 14 and not text.endswith((".", ",", ";")) and (size >= body * 1.15 or bold)
+        is_heading = (
+            len(text.split()) <= dcfg["heading_max_words"]
+            and not text.endswith((".", ",", ";"))
+            and (size >= body * dcfg["heading_size_ratio"] or bold)
+        )
         if is_heading:
             if cur["text"]:
                 sections.append(cur)
@@ -138,7 +143,11 @@ def text_sections(txt_path: str | Path) -> list[dict[str, Any]]:
     sections: list[dict[str, Any]] = []
     cur = {"title": Path(txt_path).stem, "text": []}
     for p in paras:
-        if "\n" not in p and len(p.split()) <= 12 and not p.endswith((".", "?", "!", ",", ";", ":")):
+        if (
+            "\n" not in p
+            and len(p.split()) <= get_config()["docs"]["heading_max_words"]
+            and not p.endswith((".", "?", "!", ",", ";", ":"))
+        ):
             if cur["text"]:
                 sections.append(cur)
             cur = {"title": p.lstrip("#").strip(), "text": []}
@@ -237,7 +246,8 @@ def _numbers(text: str) -> set[str]:
 def ungrounded_numbers(text: str, context: str) -> list[str]:
     """Numbers in `text` (2+ digits, commas ignored) that never appear in `context`."""
     have = _numbers(context)
-    return sorted(n for n in _numbers(text) if len(n.replace(".", "")) >= 2 and n not in have)
+    min_digits = int(get_config()["docs"]["number_check_min_digits"])
+    return sorted(n for n in _numbers(text) if len(n.replace(".", "")) >= min_digits and n not in have)
 
 
 def _refusal(question: str, reason: str, hits: list[dict[str, Any]], t0: float, **extra: Any) -> dict[str, Any]:

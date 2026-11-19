@@ -26,7 +26,6 @@ from backend.config import get_config
 log = logging.getLogger("benchlog.audio")
 
 SR = 16_000
-WINDOW_S, HOP_S = 10.0, 5.0  # AST was trained on 10 s clips
 SPEECH_LABELS = re.compile(r"speech|speaking|conversation|narration|monologue|babbling", re.I)
 TRANSCRIBE_Q = re.compile(r"^\s*(please\s+)?(transcribe|write down|what (is|was) said)", re.I)
 
@@ -101,7 +100,8 @@ def _local_classify(path: Path, top_k: int = 3) -> dict[str, Any]:
 
     ast = _load_ast()
     audio = load_audio(path)
-    win, hop = int(WINDOW_S * SR), int(HOP_S * SR)
+    acfg = get_config()["audio"]
+    win, hop = int(acfg["window_s"] * SR), int(acfg["hop_s"] * SR)
     starts = [0] if audio.size <= win else list(range(0, audio.size - win + hop, hop))
     chunks = [audio[s : s + win] for s in starts] or [np.zeros(SR, np.float32)]
     with _ast_lock, torch.inference_mode():
@@ -140,7 +140,8 @@ def _fallback(meta: dict[str, Any]) -> dict[str, Any]:
 
 
 def has_speech(labels: list[dict[str, Any]]) -> bool:
-    return any(SPEECH_LABELS.search(lab["label"]) and lab["score"] >= 0.2 for lab in labels)
+    floor = get_config()["thresholds"]["speech_label"]
+    return any(SPEECH_LABELS.search(lab["label"]) and lab["score"] >= floor for lab in labels)
 
 
 def answer_question(question: str, transcript: str, labels: list[dict[str, Any]]) -> dict[str, Any]:
@@ -169,7 +170,7 @@ def analyze(path: str | Path, question: str | None = None) -> dict[str, Any]:
     labels = cl.get("labels", [])[:3]
     text = tr.get("text", "")
     speech = has_speech(labels)
-    if text and not speech and len(text.split()) <= 4:
+    if text and not speech and len(text.split()) <= get_config()["thresholds"]["hallucination_max_words"]:
         # Short text on a clip the classifier hears no speech in is a Whisper hallucination.
         text, tr["dropped_text"] = "", text
 

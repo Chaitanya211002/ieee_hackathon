@@ -27,6 +27,8 @@ thresholds:
   doc_similarity: 0.35   # cosine similarity; below this -> "Not in your indexed protocols."
   sound_conf: 0.5        # only surface sound labels >= this in the summary
   no_speech_prob: 0.6    # local Whisper: drop segments the model thinks are not speech
+  speech_label: 0.2      # an AST speech label above this means the clip contains speech
+  hallucination_max_words: 4  # this little text on a clip with no speech label = Whisper hallucination
 
 llm:
   temperature: 0
@@ -43,6 +45,7 @@ colonies:
   min_area: 12
   max_area_frac: 0.02    # ignore blobs bigger than this fraction of the plate area
   min_circularity: 0.55
+  min_fill: 0.8          # share of a contour's interior that must be foreground (rejects rings)
   block_size: 51         # adaptive threshold neighbourhood (odd)
   c: 4
 
@@ -72,6 +75,15 @@ docs:
   chunk_words: 500
   top_k: 4
   collection: protocols
+  # Refuse when a number (this many digits or more) in the question or the answer is not in
+  # the retrieved excerpts. Catches altered-detail questions ("1706" vs the text's 1760).
+  number_check_min_digits: 2
+  heading_max_words: 14     # PDF/text lines longer than this are never headings
+  heading_size_ratio: 1.15  # PDF: font this much larger than body text marks a heading
+
+audio:
+  window_s: 10   # AST was trained on 10 s clips
+  hop_s: 5
 
 health:
   interval_s: 5

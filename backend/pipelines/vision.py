@@ -117,7 +117,7 @@ def count_colonies(image_path: str | Path, out_path: str | Path | None = None) -
             fill = np.zeros((bh, bw), np.uint8)
             cv2.drawContours(fill, [cnt - [x, y]], -1, 255, -1)
             inside = th[y : y + bh, x : x + bw][fill > 0]
-            if inside.size and (inside > 0).mean() >= 0.8:
+            if inside.size and (inside > 0).mean() >= c["min_fill"]:
                 keep.append(cnt)
         if len(keep) > len(best):
             best = keep
