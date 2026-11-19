@@ -30,7 +30,8 @@ thresholds:
 
 llm:
   temperature: 0
-  num_ctx: 8192
+  # One context size for every call: Ollama reloads a model whenever num_ctx changes.
+  num_ctx: 16384
   keep_alive: -1         # keep models loaded between captures
 
 vision:
@@ -52,6 +53,12 @@ video:
   # Short clips (<max_frames s) get fewer than max_frames at 1 fps. When true, raise fps so
   # short clips still yield up to max_frames frames (helps motion/count questions).
   adaptive_fps: true
+  # Ollama resizes every image to a fixed ~1k tokens (~10 s of prefill each on the M5), so
+  # "sheets" tiles the ordered, timestamped frames into a few contact sheets instead of
+  # sending each frame as its own image ("frames").
+  mode: sheets
+  frames_per_sheet: 5
+  sheet_cols: 5
 
 sandbox:
   timeout_s: 20
