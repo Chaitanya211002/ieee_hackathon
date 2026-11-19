@@ -257,7 +257,10 @@ class EntryBuilder:
         return out
 
     def _code_text(self, text: str) -> dict[str, Any]:
-        return self._run_code(_strip_prefix(text), {})
+        prompt = _strip_prefix(text)
+        if not prompt:
+            raise ValueError("write what the code should do after 'code:'")
+        return self._run_code(prompt, {})
 
     def _run_code(self, prompt: str, files: dict[str, bytes]) -> dict[str, Any]:
         from backend.pipelines import code

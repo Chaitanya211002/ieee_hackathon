@@ -130,6 +130,7 @@ def test_bad_requests(client):
     r = client.post("/entry", files={"file": ("x.bin", b"\x00\x01", "application/octet-stream")})
     assert r.status_code == 400
     assert client.get("/media/../../etc/passwd").status_code == 404
+    assert client.post("/entry", data={"text": "code:"}).status_code == 400
 
 
 def test_entries_experiments_export_verify(client):

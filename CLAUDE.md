@@ -54,7 +54,7 @@ still missing (item 5), so the M5 cannot reach WIN until a person adds them.
    they say where the coder runs. The WIN side agrees to that contract change, so you do not
    need to ask for it. The four endpoints do not change.
 
-3. **Find and check the WIN laptop** once both laptops are on the same network (own router or
+3. **[Done on the M5, Nov 19, home network: WIN at 192.168.0.113 via mDNS, `/health` ok, cuda, `["lan"]`]** **Find and check the WIN laptop** once both laptops are on the same network (own router or
    phone hotspot, not venue Wi-Fi). You can find its address yourself:
 
    ```bash
@@ -75,7 +75,7 @@ still missing (item 5), so the M5 cannot reach WIN until a person adds them.
    laptop-to-laptop traffic. `"cpu"` means something took the GPU before the service started:
    ask the user to run `stop.bat` and then `run.bat` on WIN.
 
-4. **Use it, then prove it.** First without editing anything:
+4. **[Done on the M5, Nov 19, except the stop.bat fallback check, which needs a person on WIN: run_audio/run_code via WIN passed; `data/config.local.yaml` made; `/status` shows audio and sandbox served by WIN; voice and code entries through the orchestrator came back from WIN]** **Use it, then prove it.** First without editing anything:
 
    ```bash
    .venv/bin/python scripts/run_audio.py data/practice-pack/audio/p_aud_001.wav --win http://<WIN-ADDR>
@@ -102,7 +102,7 @@ still missing (item 5), so the M5 cannot reach WIN until a person adds them.
    material; optional). **At the demo venue the address is different: repeat items 3 and 4
    there.** It takes a minute.
 
-5. **A person, on the Windows laptop, once:** right-click
+5. **[Looks done: port 8001 is reachable from the M5 on the home network]** **A person, on the Windows laptop, once:** right-click
    `backend\services\win\open_firewall.bat` and choose "Run as administrator". Neither Claude
    can do this (it needs an administrator prompt). `net_info.bat` shows whether it is done.
 
