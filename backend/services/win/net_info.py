@@ -92,6 +92,11 @@ def main() -> int:
         print(
             f"  Service    {'ok' if h['ok'] else 'NOT READY'}, speech on {h['speech']['device']}, /run_code for: {clients}"
         )
+        if h["speech"]["device"] != "cuda":
+            todo.append(
+                "Whisper is on the CPU (about 2x slower than real time). Free the GPU and restart: "
+                f"ollama stop {coder}, then stop.bat and run.bat."
+            )
         if "lan" not in clients and "*" not in clients:
             todo.append(
                 "run.bat: set RUN_CODE_CLIENTS=lan (or the M5's IP) and restart, or code jobs fall back to the M5."

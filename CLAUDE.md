@@ -220,6 +220,10 @@ renaming or removing keys is not.
   `check_node.py`'s speech tests need Windows text-to-speech and are skipped elsewhere.
 - The MacBook Air is fanless and throttles under sustained load (long evals, back-to-back videos).
 - Windows firewall must allow ports 8001 and 11434 for the LAN.
+- The RTX 3060's 6 GB cannot hold Whisper and Qwen2.5-Coder 7B together at `num_ctx` 16384.
+  Measured on WIN: with both loaded the coder runs 48% on the GPU at 12.5 tok/s (50 s cold
+  load); alone it reaches 26 tok/s, but Whisper on the CPU then takes 19 s for a 10 s clip.
+  Compare `routing.coder: win` against `m5` before the demo; details in the WIN README.
 - Don't use venue Wi-Fi (client isolation). Use our own router, switch, or a phone hotspot,
   with fixed IPs.
 - VLMs are unreliable at counting; that's why the OpenCV count exists.

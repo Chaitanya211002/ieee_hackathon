@@ -35,22 +35,62 @@ Then check it, which also writes `test_results.md`:
 .venv\Scripts\python.exe check_node.py
 ```
 
-**To let the M5 use `/run_code`**, edit `run.bat` and set `RUN_CODE_CLIENTS` to the M5's IP.
-Until then `/run_code` answers this laptop only and the M5 gets HTTP 403, which makes the
-orchestrator fall back to its local sandbox. See "Known limits" for why.
+`run.bat` sets `RUN_CODE_CLIENTS=lan`: `/run_code` answers devices on the same local network
+(private addresses on the same /24 as this laptop) and nobody else. See "Known limits".
+
+## Moving to another network (demo day)
+
+Nothing on this laptop is tied to an IP address, so nothing here needs editing:
+
+- The service and Ollama listen on every interface.
+- The firewall rules (`open_firewall.bat`, once) allow the local subnet of whatever network
+  the laptop is on.
+- `RUN_CODE_CLIENTS=lan` follows the network too.
+
+After joining the new network, run `net_info.bat`. It prints this laptop's name and address
+there, checks the service, Ollama and the firewall, and prints the `nodes.win` line for
+`backend/config.yaml` on the M5, which holds the placeholder `WIN_IP` until someone fills it
+in. Two ways to fill it in:
+
+1. **By address**: always works. It changes with the network, so do this at the venue
+   (unless the router gives this laptop a fixed IP). `net_info.bat` prints the current one.
+2. **By name** (`http://laptop-8k7cobtd.local:8001`): set once, no edit at the venue, but it
+   only works where mDNS passes between devices (own router, most phone hotspots) and has not
+   been tested from the Mac yet. Check with `ping laptop-8k7cobtd.local` there, and that the
+   reply comes from this laptop's Wi-Fi address (it also has VM and VPN adapters).
+
+Do the online work before leaving: `setup.bat` and `ollama pull` need the internet, the demo
+does not. Use our own router or a phone hotspot; venue Wi-Fi usually blocks laptop-to-laptop
+traffic.
 
 ## Ollama (coder model)
 
 The contract also has this laptop serve `qwen2.5-coder:7b` on port 11434:
 
 ```
-ollama pull qwen2.5-coder:7b      (about 4.7 GB)
-start_ollama.bat                  (quit the Ollama tray app first)
+ollama pull qwen2.5-coder:7b      (once, online, about 4.7 GB)
+start_ollama.bat                  (stops the tray app's Ollama and serves on 0.0.0.0)
 ```
 
-Whisper holds about 2.3 GB of the 6 GB card, and the 7B coder wants about 5 GB, so Ollama
-will run part of the coder on the CPU while both are loaded. If that is too slow, set
-`WHISPER_DEVICE=cpu` in `run.bat` or use a smaller coder.
+The Ollama tray app only listens on this laptop. To make it listen on the network after every
+reboot without `start_ollama.bat`, set the user environment variable `OLLAMA_HOST=0.0.0.0`.
+
+**The 6 GB card cannot hold Whisper and the 7B coder at once.** Measured on this laptop with
+the orchestrator's settings (`num_ctx` 16384, about 245 output tokens):
+
+| What is on the GPU | Coder speed | Coder on GPU | A 245-token answer | Whisper, 10 s clip |
+|---|---|---|---|---|
+| Whisper + coder | 12.5 tok/s | 48% (rest on CPU) | 20 s (first call: +50 s to load) | 0.7 s |
+| Coder only, Whisper on CPU | 26.3 tok/s | 85% | 10 s (first call: +6 s) | 19 s |
+
+So pick one job for this GPU. Whisper on the CPU is slower than real time, which rules out the
+second row for audio. The sensible split is Whisper here and the coder on the M5
+(`routing.coder: m5` in `backend/config.yaml`), unless a side-by-side run shows this laptop's
+12.5 tok/s beating the M5.
+
+Start `run.bat` before anything loads the coder. If the coder is already filling the GPU when
+the service starts, Whisper silently falls back to the CPU; `/health` and `net_info.bat` show
+which device it is on.
 
 ## Responses
 
@@ -88,8 +128,9 @@ POST /run_code (json {"code": str, "files": {name: base64}})
   throwaway working directory, a clean environment, a timeout and a Python-level network
   block (`sandbox_guard.py`). Code can still read files on this laptop, and code that
   deliberately bypasses Python's socket module can reach the network. That is why
-  `/run_code` only answers the IPs in `RUN_CODE_CLIENTS`. Run it on our own router, not
-  venue Wi-Fi.
+  `/run_code` only answers `RUN_CODE_CLIENTS`. With `lan`, that is every device on the same
+  local network, so run it on our own router or hotspot, never on venue Wi-Fi. To lock it to
+  the M5 alone, put the M5's IP there instead.
 - **Lab events are a keyword mapping, not a lab-trained model.** AudioSet has no
   "centrifuge" or "freezer alarm" class; a beeping timer and a beeping freezer look the same.
 - **`task=translate` is weak on the turbo model.** Use `WHISPER_MODEL=large-v3` (about 3 GB)
@@ -106,7 +147,7 @@ Model names and the sandbox timeout come from `backend/config.yaml` (`models.sou
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `RUN_CODE_CLIENTS` | `127.0.0.1,::1` | IPs allowed to call `/run_code`; `*` for any |
+| `RUN_CODE_CLIENTS` | `127.0.0.1,::1` (`run.bat` sets `lan`) | Who may call `/run_code`: IPs, `lan` (same local network), or `*` |
 | `WHISPER_MODEL` | `large-v3-turbo` | Any faster-whisper model name |
 | `WHISPER_DEVICE` | `auto` | `cuda` or `cpu` to force one |
 | `MAX_AUDIO_SECONDS` | `900` | Longest clip accepted |
