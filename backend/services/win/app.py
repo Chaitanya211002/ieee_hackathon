@@ -20,6 +20,7 @@ from __future__ import annotations
 import base64
 import binascii
 import io
+import ipaddress
 import logging
 import os
 import re
@@ -68,10 +69,12 @@ WINDOW_S, HOP_S = 10.0, 5.0  # AST was trained on 10-second clips
 LABEL_FLOOR = 0.10  # a label counts as present in a window above this score
 EVENT_FLOOR = 0.20  # a lab event is reported above this score
 
-# /run_code executes whatever it is sent, so it only answers these client IPs.
-# Loopback only by default; set RUN_CODE_CLIENTS to the M5's IP (or * for any).
+# /run_code executes whatever it is sent, so it only answers these clients. Entries are
+# IPs, "lan" (any private address on the same /24 as the address the request arrived on,
+# so nothing has to be edited when the laptops move to another network) or "*" (anyone).
+# Loopback only when unset; run.bat sets "lan".
 RUN_CODE_CLIENTS = {
-    c.strip() for c in os.environ.get("RUN_CODE_CLIENTS", "127.0.0.1,::1").split(",") if c.strip()
+    c.strip().lower() for c in os.environ.get("RUN_CODE_CLIENTS", "127.0.0.1,::1").split(",") if c.strip()
 }
 _SCRIPTS = "Scripts" if os.name == "nt" else "bin"
 _PY = "python.exe" if os.name == "nt" else "python"
@@ -420,6 +423,23 @@ class RunCodeRequest(BaseModel):
     files: dict[str, str] = Field(default_factory=dict)  # name -> base64
 
 
+def client_allowed(client: str, server: str) -> bool:
+    """May `client` call /run_code? `server` is the local address the request arrived on."""
+    if "*" in RUN_CODE_CLIENTS or client.lower() in RUN_CODE_CLIENTS:
+        return True
+    if "lan" not in RUN_CODE_CLIENTS:
+        return False
+    try:
+        c, srv = ipaddress.ip_address(client), ipaddress.ip_address(server)
+    except ValueError:
+        return False
+    if c.is_loopback:
+        return True
+    if c.version != 4 or srv.version != 4 or not c.is_private or not srv.is_private:
+        return False
+    return c in ipaddress.ip_network(f"{srv}/24", strict=False)
+
+
 def _sandbox_env(tmp: Path) -> dict[str, str]:
     """A minimal environment: nothing inherited except what Windows needs to start Python."""
     env = {
@@ -645,7 +665,8 @@ def classify_sound(file: UploadFile = File(...), top_k: int = Form(default=3)) -
 def run_code(body: RunCodeRequest, request: Request) -> dict:
     """-> {"stdout", "stderr", "exit_code", "artifacts": {name: base64 png}}"""
     client = request.client.host if request.client else ""
-    if "*" not in RUN_CODE_CLIENTS and client not in RUN_CODE_CLIENTS:
+    server = (request.scope.get("server") or ("", 0))[0]
+    if not client_allowed(client, server):
         raise HTTPException(
             status_code=403,
             detail=f"/run_code is not enabled for {client}. Add it to RUN_CODE_CLIENTS in run.bat.",

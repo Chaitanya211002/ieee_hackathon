@@ -84,20 +84,26 @@ network. (Alternatively, `npm run build` and the API serves the built app at `ht
 
 ### WIN (Windows)
 
-See `backend/services/win/README.md`. In short: run `setup.bat` once while online, then
-`start_ollama.bat` and `run.bat`. In `run.bat`, set `RUN_CODE_CLIENTS` to the M5's IP so the
-sandbox accepts its requests, and open ports 8001 and 11434 in the Windows firewall
-(`open_firewall.bat`).
+See `backend/services/win/README.md`. In short: run `setup.bat` and
+`ollama pull qwen2.5-coder:7b` once while online, open ports 8001 and 11434 in the Windows
+firewall (`open_firewall.bat`, once, as administrator), then `start_ollama.bat` and `run.bat`.
+The sandbox accepts requests from devices on the same local network (`RUN_CODE_CLIENTS=lan`).
 
 ### Connect the two
 
-Give both laptops fixed IPs on your own router or a phone hotspot (venue Wi-Fi usually blocks
-laptop-to-laptop traffic), then put the Windows IP in `backend/config.yaml`:
+Put both laptops on your own router or a phone hotspot (venue Wi-Fi usually blocks
+laptop-to-laptop traffic). The Windows laptop needs no changes on a new network: run
+`net_info.bat` there and it prints its current address. On the M5, replace `WIN_IP` in
+`backend/config.yaml` with that address and restart the orchestrator:
 
 ```yaml
 nodes:
   win: {ollama: http://192.168.8.20:11434, service: http://192.168.8.20:8001}
 ```
+
+The address changes with the network, so repeat this at a new venue. The Windows laptop's
+mDNS name (`laptop-8k7cobtd.local`) can be used in place of the address where the network
+passes mDNS; check with `ping laptop-8k7cobtd.local` on the Mac first.
 
 ## How fallback works
 

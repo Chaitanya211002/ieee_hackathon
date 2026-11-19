@@ -51,7 +51,8 @@ Changing the other node's code, or the WIN service contract (`docs/win-service-c
 needs both sides: say so to the user instead of silently editing across the boundary.
 
 Node URLs live in `backend/config.yaml` (`nodes.win` holds `WIN_IP` until the Windows laptop's
-fixed IP is filled in; while it is the placeholder, every job runs on the M5). The orchestrator
+name or IP is filled in; while it is the placeholder, every job runs on the M5, and the M5
+tests and eval rely on that). The orchestrator
 health-checks every node every 5 s; if a node is down, or a call to it fails or times out, the
 job reruns on the M5. The full stack fits on the M5 alone (~16 GB with every model loaded), so
 single-machine mode must always work. **Build and test on the M5 first; distribute last.**
@@ -110,20 +111,33 @@ cd frontend && npm run dev -- --host            # phone: http://<M5-IP>:5173
 
 ```bat
 setup.bat            :: one-time (online): .venv, sandbox_venv, model downloads
-open_firewall.bat    :: allow TCP 8001 and 11434 on the private network
+open_firewall.bat    :: once, as administrator: allow TCP 8001 and 11434 from the local subnet
 start_ollama.bat     :: Ollama on 0.0.0.0:11434 serving qwen2.5-coder:7b
-run.bat              :: WIN service on :8001; set RUN_CODE_CLIENTS to the M5's IP in this file
+run.bat              :: WIN service on :8001 (sets RUN_CODE_CLIENTS=lan)
+net_info.bat         :: this laptop's name/IP on the current network, checks, the nodes.win line
 .venv\Scripts\python.exe check_node.py   :: smoke test; writes test_results.md
 ```
 
-`/run_code` only answers clients listed in `RUN_CODE_CLIENTS` (loopback by default). If the
-M5's IP is missing there, code requests get 403 and every code job silently falls back to the M5.
+`/run_code` only answers clients allowed by `RUN_CODE_CLIENTS`: IPs, `lan` (private addresses
+on the same /24 as the WIN laptop; what `run.bat` sets) or `*`. A client that is not allowed
+gets 403 and its code jobs silently fall back to the M5.
 
-### Connecting the two
+### Connecting the two (and moving to another network)
 
-Own router or phone hotspot, fixed IPs. Put the WIN IP in `backend/config.yaml`
-(`nodes.win.ollama` and `nodes.win.service`), the M5 IP in `run.bat` (`RUN_CODE_CLIENTS`), then
-check `GET http://<M5-IP>:8000/status`: every WIN job should show `"serving": "WIN"`.
+Own router or phone hotspot, never venue Wi-Fi. Nothing on the WIN laptop is tied to an IP, so
+it needs no edits on a new network; run `net_info.bat` there to check it. On the M5, replace
+`WIN_IP` in `backend/config.yaml` (`nodes.win.ollama` and `nodes.win.service`) with either:
+
+- the address `net_info.bat` prints: always works, but changes with the network (so redo this
+  step at the demo venue); or
+- the WIN laptop's mDNS name, `laptop-8k7cobtd.local`: the same on every network, but only
+  where mDNS passes between devices. Not yet tested from the Mac; check with
+  `ping laptop-8k7cobtd.local` and that it answers from the WIN laptop's Wi-Fi address.
+
+Restart the orchestrator, then check `GET http://<M5-IP>:8000/status`: every WIN job should
+show `"serving": "WIN"`. Keep that edit local (don't commit it): the M5 tests and eval expect
+the placeholder. A name that does not resolve costs a few seconds per health probe, so if the
+WIN laptop is not on the network, put `WIN_IP` back.
 
 ## API contract (frozen — frontend depends on it)
 

@@ -4,7 +4,7 @@ writes test_results.md. Needs the node running (run.bat).
     .venv\\Scripts\\python.exe check_node.py                        # node on this laptop
     .venv\\Scripts\\python.exe check_node.py http://192.168.8.20:8001  # over the network
 
-/run_code checks only pass from a client listed in RUN_CODE_CLIENTS (this laptop by default).
+/run_code checks are skipped when this client is not allowed by RUN_CODE_CLIENTS.
 The speech clips are synthetic (Windows text-to-speech), so treat the word error rate as a
 sanity check. The real numbers come from eval/run_eval.py on the practice pack.
 """
