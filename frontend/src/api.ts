@@ -40,6 +40,21 @@ export const api = {
     `${BASE}/export?date=${date}${experimentId ? `&experiment_id=${encodeURIComponent(experimentId)}` : ""}`,
 };
 
+/** Report a browser-side error to the server's event log (data/logs/events.jsonl). Never throws. */
+export function reportError(where: string, err: unknown) {
+  const message = err instanceof Error ? err.message : String(err);
+  try {
+    fetch(`${BASE}/client-log`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message, where, user_agent: navigator.userAgent, url: location.href }),
+      keepalive: true,
+    }).catch(() => {});
+  } catch {
+    /* logging must never break the app */
+  }
+}
+
 /** Artifact/media paths come back as "/media/..."; both Vite and FastAPI serve that path. */
 export const mediaUrl = (path: string) => path;
 

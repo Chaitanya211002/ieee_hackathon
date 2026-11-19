@@ -159,7 +159,8 @@ single-machine mode must always work. **Build and test on the M5 first; distribu
 
 ```
 backend/
-  main.py          # FastAPI app: /entry, /entries, /verify, /status, /export, /protocols, /experiments, /media
+  main.py          # FastAPI app: /entry, /entries, /verify, /status, /export, /protocols, /experiments, /media, /client-log
+  events.py        # append-only event log, data/logs/events.jsonl
   router.py        # file-type routing (which pipeline, which entry type)
   nodes.py         # node health checks + run_job(): try the routed node, fall back to the M5
   config.py        # loads config.yaml; forces HF/transformers/Chroma offline
@@ -242,6 +243,24 @@ The address is either what `net_info.bat` prints (always works) or the WIN lapto
 `laptop-8k7cobtd.local` (the same on every network, but only where mDNS passes between
 devices). With a name that does not resolve, each health probe waits on DNS for several
 seconds instead of the 2 s connect timeout, so prefer the address when WIN may be absent.
+
+## Logs and debugging (M5)
+
+When the user reports a problem, look here first, before guessing:
+
+- `.venv/bin/python scripts/diagnose.py [--hours N] [--all]`: one-screen summary of server starts
+  and their mode, node up/down changes, failed/rejected captures with the end of the traceback,
+  WIN->M5 fallbacks, browser-side errors, latency per entry type, and live `/status` + `/verify`.
+- `data/logs/events.jsonl` (`backend/events.py`): one JSON line per event: `server_start`,
+  `node_up`/`node_down`, `entry` (type, node, route, seconds, fallbacks, per-job nodes),
+  `entry_rejected` (400s), `entry_error` (crashes, with traceback), `client_error` (what the
+  browser hit: failed uploads, microphone, unreachable server; sent to `POST /client-log`).
+- `data/logs/api.log`: uvicorn + pipeline logs (every job's node and latency), full tracebacks.
+  `data/logs/frontend.log`: Vite. Both are appended across restarts, with a marker per start.
+- The notebook itself: each entry's `details` holds per-step latencies, nodes and fallback errors.
+
+All of `data/` is gitignored. Tests redirect the event log to a temp folder (`tests/conftest.py`).
+On WIN, the service logs to its console; `check_node.py` and `net_info.bat` are the checks there.
 
 ## API contract (frozen — frontend depends on it)
 

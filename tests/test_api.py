@@ -29,6 +29,7 @@ def client(tmp_path_factory):
     mp.setattr(store, "_default", Store(tmp / "t.sqlite3", tmp / "media"))
     mp.setitem(get_config()["paths"], "chroma", str(tmp / "chroma"))
     mp.setitem(get_config()["llm"], "warmup", False)
+    mp.setitem(get_config()["paths"], "logs", str(tmp / "logs"))
     docs._chroma.clear()
     nodes._status.clear()
     from backend.main import app
@@ -199,6 +200,23 @@ def test_follow_up_errors(client):
     note = _post(client, text="note: follow-up target")
     assert client.post("/entry", data={"text": "why?", "follow_up_of": note["id"]}).status_code == 400
     assert client.post("/entry", data={"text": "why?", "follow_up_of": "nope"}).status_code == 400
+
+
+def test_event_log(client):
+    import json
+
+    from backend.config import path
+
+    _post(client, text="note: event log check")
+    assert client.post("/entry", data={"text": "code:"}).status_code == 400
+    assert client.post("/client-log", json={"message": "mic denied", "where": "microphone"}).json()["ok"]
+    rows = [json.loads(x) for x in (path("logs") / "events.jsonl").read_text().splitlines()]
+    kinds = [r["event"] for r in rows]
+    assert "client_error" in kinds
+    ok = [r for r in rows if r["event"] == "entry" and r.get("text") == "note: event log check"]
+    assert ok and ok[-1]["type"] == "note" and ok[-1]["seconds"] is not None
+    rej = [r for r in rows if r["event"] == "entry_rejected"]
+    assert rej and rej[-1]["status"] == 400 and "code:" in rej[-1]["error"]
 
 
 def test_verify_catches_tampering(client):

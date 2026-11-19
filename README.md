@@ -189,6 +189,13 @@ disappearing).
 Per-pipeline scripts for trying one file: `scripts/run_vision.py`, `run_audio.py`,
 `run_video.py`, `run_docs.py`, `run_code.py` (each logs latency and the node that served it).
 
+## Logs
+
+`.venv/bin/python scripts/diagnose.py` summarises what the app has been doing: failed or rejected
+captures with the end of the traceback, Windows-laptop up/down changes, fallbacks to the Mac,
+errors the browser hit (including phones), and latency per entry type. The raw data is in
+`data/logs/events.jsonl` (one JSON line per event), with full server logs in `data/logs/api.log`.
+
 ## Known limits
 
 - **VLM counting.** Qwen3-VL miscounts crowded scenes (e.g. 3 zebras for 4). The UI always labels

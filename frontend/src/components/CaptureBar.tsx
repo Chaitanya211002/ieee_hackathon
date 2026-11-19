@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { reportError } from "../api";
 
 interface Props {
   busy: boolean;
@@ -55,6 +56,7 @@ export default function CaptureBar({ busy, onSend, followUp, onClearFollowUp }: 
       setRecording(true);
     } catch (e) {
       setError(`Microphone unavailable: ${(e as Error).message}`);
+      reportError("microphone", e);
     }
   };
 

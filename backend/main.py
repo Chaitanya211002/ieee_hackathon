@@ -18,6 +18,8 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
+import traceback
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
@@ -26,8 +28,9 @@ from fastapi import APIRouter, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
-from backend import nodes
+from backend import events, nodes
 from backend.config import REPO_ROOT, get_config
 from backend.router import EntryBuilder, save_upload
 from backend.store import DEFAULT_EXPERIMENT, get_store
@@ -62,6 +65,15 @@ def _warmup() -> None:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    import os
+
+    cfg = get_config()
+    events.record(
+        "server_start",
+        config=os.environ.get("BENCHLOG_CONFIG", "backend/config.yaml"),
+        routing=cfg["routing"],
+        win_service=cfg["nodes"].get("win", {}).get("service"),
+    )
     _stop.clear()
     threading.Thread(target=_health_loop, daemon=True, name="health").start()
     if get_config().get("llm", {}).get("warmup", True):
@@ -90,6 +102,15 @@ def create_entry(
 ) -> dict:
     store = get_store()
     tmp: Path | None = None
+    t0 = time.time()
+    req = {
+        "file": file.filename if file is not None and file.filename else None,
+        "content_type": file.content_type if file is not None and file.filename else None,
+        "text": (text or "")[:200] or None,
+        "question": (question or "")[:200] or None,
+        "follow_up_of": follow_up_of,
+        "experiment_id": experiment_id,
+    }
     try:
         if file is not None and file.filename:
             tmp = save_upload(file.file, Path(file.filename).suffix)
@@ -103,12 +124,22 @@ def create_entry(
             question=question,
             follow_up_of=follow_up_of,
         )
+        if tmp is not None:
+            req["bytes"] = tmp.stat().st_size
+    except HTTPException as exc:
+        events.record("entry_rejected", **req, status=exc.status_code, error=exc.detail)
+        raise
     except ValueError as exc:
+        events.record("entry_rejected", **req, status=400, error=str(exc))
         raise HTTPException(400, str(exc)) from exc
+    except Exception as exc:
+        events.record("entry_error", **req, error=f"{type(exc).__name__}: {exc}",
+                      traceback=traceback.format_exc()[-4000:], seconds=round(time.time() - t0, 2))  # fmt: skip
+        raise
     finally:
         if tmp is not None:
             tmp.unlink(missing_ok=True)
-    return store.add_entry(
+    entry = store.add_entry(
         type=out["type"],
         summary=out["summary"],
         details=out["details"],
@@ -116,6 +147,38 @@ def create_entry(
         node=out["node"],
         experiment_id=experiment_id or DEFAULT_EXPERIMENT,
     )
+    d = entry["details"]
+    events.record(
+        "entry",
+        **req,
+        id=entry["id"],
+        type=entry["type"],
+        node=entry["node"],
+        route=d.get("routing", {}).get("route"),
+        seconds=round(time.time() - t0, 2),
+        summary=entry["summary"][:200],
+        fallbacks=events.fallbacks(d),
+        nodes={k: d[k] for k in ("transcribe_node", "classify_node", "coder_node", "sandbox_node") if k in d},
+        ok=d.get("ok"),
+        refused=d.get("refused"),
+    )
+    return entry
+
+
+class ClientLog(BaseModel):
+    message: str
+    where: str | None = None
+    user_agent: str | None = None
+    url: str | None = None
+
+
+@api.post("/client-log")
+def client_log(body: ClientLog) -> dict:
+    """Errors the browser hit (failed uploads, microphone, network), so they show up server-side."""
+    events.record("client_error", message=body.message[:1000], where=body.where, user_agent=(body.user_agent or "")[:200],
+                  url=body.url)  # fmt: skip
+    log.warning("client error (%s): %s", body.where, body.message[:300])
+    return {"ok": True}
 
 
 @api.get("/entries")

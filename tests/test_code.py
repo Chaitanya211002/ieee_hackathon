@@ -22,3 +22,17 @@ def test_generate_with_win_down_falls_back(monkeypatch, tmp_path):
     assert r["coder_node"] == "M5" and r["sandbox_node"] == "M5"
     assert "4" in r["stdout"]
     assert any(p.endswith(".png") for p in r["plots"])
+
+
+def test_node_down_is_logged(monkeypatch):
+    import json
+
+    from backend.config import path
+
+    monkeypatch.setitem(get_config()["nodes"], "win", {"ollama": "http://127.0.0.1:9", "service": "http://127.0.0.1:9"})
+    nodes._status.clear()
+    nodes.refresh("win")
+    rows = [json.loads(x) for x in (path("logs") / "events.jsonl").read_text().splitlines()]
+    assert {r["node"] for r in rows if r["event"] == "node_down"} == {"win.ollama", "win.service"}
+    nodes.refresh("win")  # no change -> nothing new logged
+    assert len((path("logs") / "events.jsonl").read_text().splitlines()) == len(rows)

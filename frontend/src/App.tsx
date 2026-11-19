@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, today } from "./api";
+import { api, reportError, today } from "./api";
 import CaptureBar from "./components/CaptureBar";
 import EntryCard from "./components/EntryCard";
 import Sidebar from "./components/Sidebar";
@@ -46,6 +46,7 @@ export default function App() {
       setError(null);
     } catch (e) {
       setError(`Cannot reach the BenchLog server: ${(e as Error).message}`);
+      reportError("refresh", e);
     }
   }, [current]);
 
@@ -78,6 +79,7 @@ export default function App() {
       await refresh();
     } catch (e) {
       setError((e as Error).message);
+      reportError(`send ${file ? `${file.name} (${file.type || "?"}, ${file.size} B)` : "text"}`, e);
     } finally {
       setPending((p) => p.filter((x) => x.id !== id));
     }
@@ -119,6 +121,7 @@ export default function App() {
                 await refresh();
               } catch (e) {
                 setError((e as Error).message);
+                reportError(`protocol upload ${f.name}`, e);
               } finally {
                 setUploading(false);
               }

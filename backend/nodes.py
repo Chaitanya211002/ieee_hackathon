@@ -63,10 +63,26 @@ def refresh(node: str | None = None) -> dict[str, dict[str, Any]]:
             continue
         for target in targets:
             st = _probe(n, target)
+            key = f"{n}.{target}"
             with _lock:
-                _status[f"{n}.{target}"] = st
+                prev = _status.get(key)
+                _status[key] = st
+            _note_change(key, prev, st)
     with _lock:
         return dict(_status)
+
+
+def _note_change(key: str, prev: dict[str, Any] | None, st: dict[str, Any]) -> None:
+    """Log when a configured node goes up or down (the first probe counts as a change)."""
+    if st.get("error") == "not configured":
+        return
+    if prev is not None and bool(prev.get("up")) == bool(st["up"]):
+        return
+    from backend import events
+
+    state = "up" if st["up"] else "down"
+    (log.info if st["up"] else log.warning)("node %s is %s %s", key, state, st.get("error") or "")
+    events.record("node_" + state, node=key, url=st.get("url"), error=st.get("error"))
 
 
 def is_up(node: str, target: str) -> bool:
@@ -81,13 +97,12 @@ def is_up(node: str, target: str) -> bool:
 
 
 def mark_down(node: str, target: str, error: str) -> None:
+    key = f"{node}.{target}"
+    st = {"up": False, "checked": time.time(), "error": error[:200], "url": node_url(node, target)}
     with _lock:
-        _status[f"{node}.{target}"] = {
-            "up": False,
-            "checked": time.time(),
-            "error": error[:200],
-            "url": node_url(node, target),
-        }
+        prev = _status.get(key)
+        _status[key] = st
+    _note_change(key, prev, st)
 
 
 def route(job: str) -> str:

@@ -26,9 +26,11 @@ fi
 CONFIG=$(.venv/bin/python scripts/pick_config.py "$@")
 stop
 sleep 1
+# Logs are appended (never overwritten) so earlier runs stay available for debugging.
+for f in api frontend; do echo "===== start $(date '+%Y-%m-%d %H:%M:%S') config=${CONFIG#$PWD/} =====" >>"data/logs/$f.log"; done
 # Every launched process gets its own stdin/stdout/stderr, so nothing holds this script's output open.
-BENCHLOG_CONFIG="$CONFIG" nohup .venv/bin/uvicorn backend.main:app --host 0.0.0.0 --port 8000 </dev/null >data/logs/api.log 2>&1 &
-(cd frontend && exec nohup npx vite --host </dev/null >../data/logs/frontend.log 2>&1) &
+BENCHLOG_CONFIG="$CONFIG" nohup .venv/bin/uvicorn backend.main:app --host 0.0.0.0 --port 8000 </dev/null >>data/logs/api.log 2>&1 &
+(cd frontend && exec nohup npx vite --host </dev/null >>../data/logs/frontend.log 2>&1) &
 for _ in $(seq 1 40); do curl -sf --max-time 1 http://localhost:5173/api/health >/dev/null && break; sleep 1; done
 
 echo
@@ -38,4 +40,4 @@ s = json.load(sys.stdin)
 print('Jobs: ' + ', '.join(f'{j} -> {v[\"serving\"]}' for j, v in s['jobs'].items()))"
 IP=$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || true)
 echo "BenchLog is up:  http://localhost:5173${IP:+   phone: http://$IP:5173}"
-echo "Config: ${CONFIG#$PWD/}   Logs: data/logs/"
+echo "Config: ${CONFIG#$PWD/}   Logs: data/logs/   Problems: .venv/bin/python scripts/diagnose.py"
