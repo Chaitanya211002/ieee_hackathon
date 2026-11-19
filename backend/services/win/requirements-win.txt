@@ -1,0 +1,21 @@
+# WIN node service (Python 3.11, Windows). Install with setup.bat.
+# torch is installed first by setup.bat: the PyPI Windows wheel is the CPU build, which is
+# what the sound classifier uses (the GPU is kept for Whisper and Ollama).
+fastapi>=0.115
+uvicorn>=0.30
+python-multipart>=0.0.9
+pyyaml
+numpy
+requests
+
+# Speech to text (CTranslate2 backend, no PyTorch needed)
+faster-whisper>=1.1.0,<2
+# PyAV 19 dropped an argument faster-whisper 1.2.1 still passes when decoding audio.
+av>=11,<19
+
+# GPU libraries CTranslate2 needs on Windows (CUDA 12 + cuDNN 9)
+nvidia-cublas-cu12
+nvidia-cudnn-cu12>=9,<10
+
+# Sound classifier. Pinned below 5: the 4.x feature extractor runs without torchaudio.
+transformers>=4.44,<5

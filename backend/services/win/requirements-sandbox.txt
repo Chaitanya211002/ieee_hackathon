@@ -1,0 +1,5 @@
+# Packages available to code run by /run_code (installed into sandbox_venv by setup.bat).
+numpy
+pandas
+matplotlib
+scipy
