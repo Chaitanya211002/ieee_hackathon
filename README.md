@@ -71,11 +71,21 @@ ollama pull nomic-embed-text
 cd frontend && npm install && cd ..
 ```
 
-Run it (three terminals):
+Run it:
+
+```bash
+./scripts/start_m5.sh          # starts Ollama, the orchestrator and the frontend
+./scripts/start_m5.sh --stop   # stops the orchestrator and frontend
+```
+
+It checks whether the Windows laptop is reachable and picks the mode by itself: **two laptops**
+when it answers (audio and the code sandbox go to WIN), otherwise **single laptop** (every job on
+the Mac). So the same command works at home with both laptops and at a venue with only the Mac.
+`--solo` forces single-laptop mode. The equivalent by hand, in three terminals:
 
 ```bash
 OLLAMA_HOST=0.0.0.0 OLLAMA_KEEP_ALIVE=-1 OLLAMA_MAX_LOADED_MODELS=3 ollama serve
-.venv/bin/uvicorn backend.main:app --host 0.0.0.0 --port 8000
+BENCHLOG_CONFIG=$(.venv/bin/python scripts/pick_config.py) .venv/bin/uvicorn backend.main:app --host 0.0.0.0 --port 8000
 cd frontend && npm run dev -- --host
 ```
 
@@ -89,12 +99,23 @@ service port in the Windows firewall (`open_firewall.bat`, once, as administrato
 `run.bat`. The sandbox accepts requests from devices on the same local network
 (`RUN_CODE_CLIENTS=lan`).
 
+### Demo with only the Mac
+
+If the Windows laptop stays behind (for example at home while the Mac goes to the venue), just
+run `./scripts/start_m5.sh` at the venue. It finds no Windows laptop and runs everything on the
+Mac; the status panel shows the Windows node offline and its jobs as "M5 (fallback)". The eval
+numbers below were measured in this mode. The Mac does not connect back to the home network:
+that would need the internet, which the app never uses.
+
+With Wi-Fi off, open the app on the Mac itself (`http://localhost:5173`). To also use a phone,
+both need a local network: a phone hotspot with mobile data switched off works.
+
 ### Connect the two
 
 Put both laptops on your own router or a phone hotspot (venue Wi-Fi usually blocks
 laptop-to-laptop traffic). The Windows laptop needs no changes on a new network: run
-`net_info.bat` there and it prints its current address. On the M5, put that address in a local
-copy of the config (the tracked `backend/config.yaml` keeps the `WIN_IP` placeholder, which the
+`net_info.bat` there and it prints its current address. `./scripts/start_m5.sh` usually finds
+it by itself (by the laptop's mDNS name). If it can't, put that address in a local copy of the config (the tracked `backend/config.yaml` keeps the `WIN_IP` placeholder, which the
 tests and eval rely on) and start the orchestrator with it:
 
 ```bash

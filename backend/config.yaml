@@ -1,10 +1,19 @@
 # BenchLog configuration. All model names, node URLs and thresholds live here.
-# Replace WIN_IP with the Windows laptop's fixed LAN IP (e.g. 192.168.8.20). While it is the
-# literal WIN_IP, the WIN node counts as "not configured" and every job runs on the M5.
+# Keep the WIN_IP placeholder in this tracked file: while it is the literal WIN_IP, the WIN node
+# counts as "not configured" and every job runs on the M5 (the tests and eval rely on that).
+# The real WIN address goes in data/config.local.yaml (gitignored); scripts/start_m5.sh
+# writes it there when the WIN laptop answers, and otherwise starts on this file (M5 only).
 
 nodes:
   m5:  {ollama: http://localhost:11434}
   win: {ollama: http://WIN_IP:11434, service: http://WIN_IP:8001}
+
+discovery:
+  # The WIN laptop's mDNS name: the same on every network, so the start script can find it
+  # after its address changes. Only resolves where the network passes mDNS between devices.
+  win_hostname: laptop-8k7cobtd.local
+  win_port: 8001
+  timeout_s: 3
 
 routing:
   vision: m5

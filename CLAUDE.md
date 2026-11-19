@@ -106,9 +106,19 @@ still missing (item 5), so the M5 cannot reach WIN until a person adds them.
    `backend\services\win\open_firewall.bat` and choose "Run as administrator". Neither Claude
    can do this (it needs an administrator prompt). `net_info.bat` shows whether it is done.
 
-**Demo-day order.** WIN first: join the network, `run.bat` (before anything else can take the
-GPU), then `net_info.bat`, which should end with "Nothing left to do on this laptop." Ollama
-is not needed on WIN. Then the M5: items 3 and 4 with the new address, and check `/status`.
+**Demo-day order.** Two cases:
+- *Both laptops at the venue, same network:* WIN first: join the network, `run.bat` (before
+  anything else can take the GPU), then `net_info.bat`, which should end with "Nothing left to
+  do on this laptop." Ollama is not needed on WIN. Then on the M5: `./scripts/start_m5.sh`. It
+  finds WIN by its mDNS name, writes the new address to `data/config.local.yaml` and prints
+  which node serves each job. If it reports single-laptop mode, mDNS is blocked: ask the user
+  for the address `net_info.bat` shows, put it in `data/config.local.yaml`, and run it again.
+- *WIN stays at home, only the M5 goes to the venue (likely):* nothing to do on WIN. On the M5:
+  `./scripts/start_m5.sh`. WIN does not answer, so it starts in single-laptop mode on the tracked
+  config: every job on the M5, no WIN probes, and the status panel shows WIN offline with
+  audio/sandbox "M5 (fallback)", which is the required fallback working. Never tunnel to the
+  home network over the internet: the hard rules forbid calls outside the LAN, and judges test
+  with Wi-Fi off. The eval in `eval/results.md` was run in exactly this mode.
 
 From the M5, do not edit anything under `backend/services/win/`. If something there looks
 wrong, tell the user what and why; it gets fixed from the WIN laptop.
@@ -184,9 +194,12 @@ ollama pull qwen3-vl:8b-instruct && ollama pull qwen2.5-coder:7b && ollama pull 
 ./scripts/setup_sandbox.sh                      # data/sandbox_venv for the local code sandbox
 cd frontend && npm install && cd ..
 
-# run (three terminals)
+# run: one command; picks two-laptop or single-laptop mode by itself (scripts/pick_config.py)
+./scripts/start_m5.sh            # Ollama (if not running) + orchestrator + frontend, logs in data/logs/
+./scripts/start_m5.sh --solo     # force single-laptop mode;  --stop  stops orchestrator + frontend
+# the same by hand (three terminals):
 OLLAMA_HOST=0.0.0.0 OLLAMA_KEEP_ALIVE=-1 OLLAMA_MAX_LOADED_MODELS=3 ollama serve
-.venv/bin/uvicorn backend.main:app --host 0.0.0.0 --port 8000
+BENCHLOG_CONFIG=$(.venv/bin/python scripts/pick_config.py) .venv/bin/uvicorn backend.main:app --host 0.0.0.0 --port 8000
 cd frontend && npm run dev -- --host            # phone: http://<M5-IP>:5173
 
 # test
@@ -211,6 +224,11 @@ on the same /24 as the WIN laptop; what `run.bat` sets) or `*`. A client that is
 gets 403 and its code jobs silently fall back to the M5.
 
 ### Connecting the two (and moving to another network)
+
+`scripts/start_m5.sh` does the M5 side of this automatically: it uses `data/config.local.yaml`
+if WIN answers at the address there, else looks WIN up by `discovery.win_hostname` (mDNS) and
+rewrites that file, else starts in single-laptop mode on `backend/config.yaml`. It regenerates
+the local file from the tracked config every time, so the copy never goes stale.
 
 Own router or phone hotspot, never venue Wi-Fi. Nothing on the WIN laptop is tied to an IP, so
 it needs no edits on a new network; run `net_info.bat` there to check it. The M5 needs the WIN
