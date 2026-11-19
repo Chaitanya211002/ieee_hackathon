@@ -162,7 +162,9 @@ class EntryBuilder:
         artifacts = [{"kind": "image", "path": f["path"]} for f in r["frames"]]
         node = "M5"
         if r.get("audio") and r["audio"].get("transcript"):
-            artifacts.append({"kind": "transcript", "path": self._save(r["audio"]["transcript"].encode(), "transcript.txt")})
+            artifacts.append(
+                {"kind": "transcript", "path": self._save(r["audio"]["transcript"].encode(), "transcript.txt")}
+            )
         return {"route": "video", "type": "video", "summary": r["summary"],
                 "details": {**r, "media": {"kind": "video", "path": media}},
                 "artifacts": artifacts, "node": node}  # fmt: skip
@@ -182,7 +184,11 @@ class EntryBuilder:
 
     def _data(self, path: Path, name: str, q: str | None) -> dict[str, Any]:
         media = self._save(path, name)
-        prompt = _strip_prefix(q) if q else f"Summarise {name}: print basic statistics for each column and plot the numeric columns."
+        prompt = (
+            _strip_prefix(q)
+            if q
+            else f"Summarise {name}: print basic statistics for each column and plot the numeric columns."
+        )
         out = self._run_code(prompt, {name: path.read_bytes()})
         out["details"]["media"] = {"kind": "data", "path": media}
         return out

@@ -1,8 +1,8 @@
 """Index protocols and ask questions.
 
-    .venv/bin/python scripts/run_docs.py ingest data/practice-pack/text/p_txt_doc_01.pdf
-    .venv/bin/python scripts/run_docs.py ask "Who defeated Montcalm at Quebec?" [--source p_txt_doc_01.pdf]
-    .venv/bin/python scripts/run_docs.py list
+.venv/bin/python scripts/run_docs.py ingest data/practice-pack/text/p_txt_doc_01.pdf
+.venv/bin/python scripts/run_docs.py ask "Who defeated Montcalm at Quebec?" [--source p_txt_doc_01.pdf]
+.venv/bin/python scripts/run_docs.py list
 """
 
 import argparse

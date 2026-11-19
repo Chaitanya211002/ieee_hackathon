@@ -170,7 +170,9 @@ def _win_service_up() -> bool:
 
 @pytest.mark.skipif(not _win_service_up(), reason="no WIN service on 127.0.0.1:8001")
 def test_voice_served_by_win_and_fallback(client, monkeypatch):
-    monkeypatch.setitem(get_config()["nodes"], "win", {"ollama": "http://127.0.0.1:11434", "service": "http://127.0.0.1:8001"})
+    monkeypatch.setitem(
+        get_config()["nodes"], "win", {"ollama": "http://127.0.0.1:11434", "service": "http://127.0.0.1:8001"}
+    )
     nodes._status.clear()
     e = _post(client, PACK / "audio" / "p_aud_002.wav", text="Transcribe this audio.", mime="audio/wav")
     assert e["node"] == "WIN" and "wind" in e["details"]["transcript"].lower()

@@ -1,7 +1,7 @@
 """Run the image pipeline on one file.
 
-    .venv/bin/python scripts/run_vision.py data/practice-pack/image/p_img_002.jpg "How many people?"
-    .venv/bin/python scripts/run_vision.py plate.jpg "How many colonies?"
+.venv/bin/python scripts/run_vision.py data/practice-pack/image/p_img_002.jpg "How many people?"
+.venv/bin/python scripts/run_vision.py plate.jpg "How many colonies?"
 """
 
 import argparse

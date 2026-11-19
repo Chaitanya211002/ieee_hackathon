@@ -35,11 +35,7 @@ def test_no_network():
 @pytest.mark.skipif(sys.platform != "darwin", reason="sandbox-exec is macOS only")
 def test_raw_socket_blocked_by_os():
     # Bypass the Python guard; the OS-level profile must still stop it.
-    code = (
-        "import _socket\n"
-        "s = _socket.socket(); s.settimeout(3)\n"
-        "s.connect(('1.1.1.1', 80)); print('CONNECTED')\n"
-    )
+    code = "import _socket\ns = _socket.socket(); s.settimeout(3)\ns.connect(('1.1.1.1', 80)); print('CONNECTED')\n"
     r = local.run_code(code)
     assert "CONNECTED" not in r["stdout"] and r["exit_code"] != 0
 

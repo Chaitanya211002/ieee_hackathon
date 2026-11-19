@@ -1,8 +1,8 @@
 """Run the code pipeline on one prompt (optionally with input files).
 
-    .venv/bin/python scripts/run_code.py "Plot y = x^2 for x in 0..10 and print the max"
-    .venv/bin/python scripts/run_code.py "Fit a standard curve" --file plate.csv
-    .venv/bin/python scripts/run_code.py "..." --win http://127.0.0.1   # use a WIN node at this host
+.venv/bin/python scripts/run_code.py "Plot y = x^2 for x in 0..10 and print the max"
+.venv/bin/python scripts/run_code.py "Fit a standard curve" --file plate.csv
+.venv/bin/python scripts/run_code.py "..." --win http://127.0.0.1   # use a WIN node at this host
 """
 
 import argparse

@@ -1,7 +1,7 @@
 """Run the audio pipeline on one file.
 
-    .venv/bin/python scripts/run_audio.py data/practice-pack/audio/p_aud_001.wav "What kind of day was it?"
-    .venv/bin/python scripts/run_audio.py clip.wav --win http://127.0.0.1   # use a WIN node at this host
+.venv/bin/python scripts/run_audio.py data/practice-pack/audio/p_aud_001.wav "What kind of day was it?"
+.venv/bin/python scripts/run_audio.py clip.wav --win http://127.0.0.1   # use a WIN node at this host
 """
 
 import argparse

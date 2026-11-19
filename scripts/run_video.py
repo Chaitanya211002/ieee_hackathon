@@ -1,6 +1,6 @@
 """Run the video pipeline on one file.
 
-    .venv/bin/python scripts/run_video.py data/practice-pack/video/p_vid_002.mp4 "Which direction does the square move?"
+.venv/bin/python scripts/run_video.py data/practice-pack/video/p_vid_002.mp4 "Which direction does the square move?"
 """
 
 import argparse

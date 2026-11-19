@@ -240,7 +240,11 @@ def write_report(rows: list[dict], out: Path, started: float) -> None:
     if by["audio"]:
         w = [r["wer"] for r in m("audio", "wer")]
         metrics += [
-            ("Audio", "Mean WER, transcription items", f"{100 * statistics.mean(w):.1f}% ({len(w)} clips)" if w else "–"),
+            (
+                "Audio",
+                "Mean WER, transcription items",
+                f"{100 * statistics.mean(w):.1f}% ({len(w)} clips)" if w else "–",
+            ),
             ("Audio", "Speech Q&A accuracy (lenient)", pct(r["ok"] for r in m("audio", "speech_qa"))),
             ("Audio", "Sound identification accuracy (answer)", pct(r["ok"] for r in m("audio", "sound"))),
             ("Audio", "Sound in AST top-3 labels", pct(r["top3_hit"] for r in m("audio", "sound"))),

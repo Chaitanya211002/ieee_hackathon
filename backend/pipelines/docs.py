@@ -198,7 +198,9 @@ def ingest(file_path: str | Path, source: str | None = None) -> dict[str, Any]:
         ],
     )
     latency = round(time.time() - t0, 2)
-    log.info("docs.ingest node=M5 source=%s sections=%d chunks=%d latency=%.2fs", source, len(sections), len(chunks), latency)
+    log.info(
+        "docs.ingest node=M5 source=%s sections=%d chunks=%d latency=%.2fs", source, len(sections), len(chunks), latency
+    )
     return {
         "source": source,
         "doc_id": doc_id,
