@@ -139,9 +139,7 @@ def wer(reference: str, hypothesis: str) -> float:
 
 def post(endpoint: str, path: Path, **fields) -> dict:
     with open(path, "rb") as fh:
-        r = requests.post(
-            f"{URL}{endpoint}", files={"file": (path.name, fh)}, data=fields, timeout=600
-        )
+        r = requests.post(f"{URL}{endpoint}", files={"file": (path.name, fh)}, data=fields, timeout=600)
     r.raise_for_status()
     return r.json()
 
@@ -203,9 +201,7 @@ def main() -> int:
         res = post("/classify_sound", path)
         scores = [x["score"] for x in res["labels"]]
         shape_ok = (
-            len(res["labels"]) == 3
-            and scores == sorted(scores, reverse=True)
-            and all(0 <= s <= 1 for s in scores)
+            len(res["labels"]) == 3 and scores == sorted(scores, reverse=True) and all(0 <= s <= 1 for s in scores)
         )
         events = [e["event"] for e in res["lab_events"]]
         top = ", ".join(f"{x['label']} {x['score']}" for x in res["labels"])
@@ -295,9 +291,7 @@ def main() -> int:
             "plate.csv",
             f"{res['stdout'].strip()}; standard_curve.png {len(png)} bytes",
             f"{res['seconds']}s",
-            res["exit_code"] == 0
-            and png[:8] == b"\x89PNG\r\n\x1a\n"
-            and "slope=0.19" in res["stdout"],
+            res["exit_code"] == 0 and png[:8] == b"\x89PNG\r\n\x1a\n" and "slope=0.19" in res["stdout"],
         )
 
         res = run_code("x = 1 / 0").json()
@@ -309,9 +303,7 @@ def main() -> int:
             res["exit_code"] == 1 and "ZeroDivisionError" in res["stderr"],
         )
 
-        res = run_code(
-            "import urllib.request\nurllib.request.urlopen('http://example.com', timeout=5)"
-        ).json()
+        res = run_code("import urllib.request\nurllib.request.urlopen('http://example.com', timeout=5)").json()
         record(
             "No network inside the sandbox",
             "urlopen(example.com)",

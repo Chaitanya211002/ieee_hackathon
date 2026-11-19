@@ -284,9 +284,7 @@ def read_upload(upload: UploadFile) -> np.ndarray:
     try:
         audio = decode_audio(io.BytesIO(data), sampling_rate=SAMPLE_RATE)
     except Exception as exc:  # noqa: BLE001
-        raise HTTPException(
-            status_code=415, detail=f"Could not decode audio from this file: {exc}"
-        ) from exc
+        raise HTTPException(status_code=415, detail=f"Could not decode audio from this file: {exc}") from exc
     audio = np.asarray(audio, dtype=np.float32)
     if audio.size == 0:
         raise HTTPException(status_code=422, detail="No audio track found in this file")
@@ -308,12 +306,8 @@ def window_starts(n_samples: int) -> list[int]:
 def map_lab_events(label_scores: dict[str, float], first_seen: dict[str, float]) -> list[dict]:
     events = []
     for spec in LAB_EVENTS:
-        pattern = re.compile(
-            r"\b(" + "|".join(re.escape(k) for k in spec["keywords"]) + r")\b", re.IGNORECASE
-        )
-        hits = {
-            lab: sc for lab, sc in label_scores.items() if sc >= LABEL_FLOOR and pattern.search(lab)
-        }
+        pattern = re.compile(r"\b(" + "|".join(re.escape(k) for k in spec["keywords"]) + r")\b", re.IGNORECASE)
+        hits = {lab: sc for lab, sc in label_scores.items() if sc >= LABEL_FLOOR and pattern.search(lab)}
         if not hits or max(hits.values()) < EVENT_FLOOR:
             continue
         evidence = sorted(hits, key=hits.get, reverse=True)[:4]
@@ -343,9 +337,7 @@ def classify_audio(audio: np.ndarray, top_k: int) -> dict:
     batches = []
     with _sound_lock, torch.inference_mode():
         for i in range(0, len(chunks), 8):
-            inputs = sound["extractor"](
-                chunks[i : i + 8], sampling_rate=SAMPLE_RATE, return_tensors="pt"
-            )
+            inputs = sound["extractor"](chunks[i : i + 8], sampling_rate=SAMPLE_RATE, return_tensors="pt")
             logits = sound["model"](**inputs).logits
             batches.append(torch.sigmoid(logits).cpu().numpy())  # AudioSet is multi-label
     probs = np.concatenate(batches, axis=0)
@@ -474,18 +466,14 @@ def _sandbox_env(tmp: Path) -> dict[str, str]:
             env[key] = os.environ[key]
     system_root = os.environ.get("SYSTEMROOT", r"C:\Windows")
     env["PATH"] = (
-        os.pathsep.join([str(Path(system_root) / "System32"), system_root])
-        if os.name == "nt"
-        else "/usr/bin:/bin"
+        os.pathsep.join([str(Path(system_root) / "System32"), system_root]) if os.name == "nt" else "/usr/bin:/bin"
     )
     return env
 
 
 def _kill_tree(proc: subprocess.Popen) -> None:
     if os.name == "nt":
-        subprocess.run(
-            ["taskkill", "/PID", str(proc.pid), "/T", "/F"], capture_output=True, check=False
-        )
+        subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"], capture_output=True, check=False)
     else:  # pragma: no cover - the service targets Windows
         import signal
 
@@ -521,9 +509,7 @@ def run_sandboxed(code: str, files: dict[str, str]) -> dict:
         (tmp / "main.py").write_text(code, encoding="utf-8")
 
         kwargs: dict = (
-            {"creationflags": subprocess.CREATE_NO_WINDOW}
-            if os.name == "nt"
-            else {"start_new_session": True}
+            {"creationflags": subprocess.CREATE_NO_WINDOW} if os.name == "nt" else {"start_new_session": True}
         )
         proc = subprocess.Popen(
             # -I: isolated mode, ignores PYTHON* variables and the user site directory.
