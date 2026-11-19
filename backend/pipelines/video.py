@@ -38,29 +38,33 @@ DESCRIBE_PROMPT = "Describe what happens in this video, in order, in 2-3 sentenc
 
 def probe(video_path: str | Path) -> dict[str, Any]:
     out = subprocess.run(
-        ["ffprobe", "-v", "error", "-show_entries", "format=duration:stream=codec_type,width,height",
+        ["ffprobe", "-v", "error", "-show_entries", "format=duration:stream=codec_type,width,height,avg_frame_rate",
          "-of", "json", str(video_path)],
         capture_output=True, check=True, text=True,
     ).stdout  # fmt: skip
     info = json.loads(out)
     streams = info.get("streams", [])
     v = next((s for s in streams if s.get("codec_type") == "video"), {})
+    num, _, den = (v.get("avg_frame_rate") or "0/1").partition("/")
+    fps = float(num) / float(den) if den and float(den) else 0.0
     return {
         "duration": float(info.get("format", {}).get("duration") or 0),
+        "fps": fps,
         "width": v.get("width"),
         "height": v.get("height"),
         "has_audio": any(s.get("codec_type") == "audio" for s in streams),
     }
 
 
-def frame_times(duration: float) -> list[float]:
+def frame_times(duration: float, video_fps: float = 0.0) -> list[float]:
     cfg = get_config()["video"]
     max_frames = int(cfg["max_frames"])
     if duration <= 0:
         return [0.0]
     n = max_frames if cfg.get("adaptive_fps") else min(max_frames, max(1, math.floor(duration * cfg["fps"])))
     n = min(n, max_frames)
-    end = max(0.0, duration - 0.05)  # last decodable instant
+    # The last frame starts one frame interval before the end; seeking past it yields nothing.
+    end = max(0.0, duration - max(0.05, 1.2 / video_fps if video_fps > 0 else 0.1))
     if n == 1:
         return [0.0]
     return [round(end * i / (n - 1), 2) for i in range(n)]
@@ -74,15 +78,21 @@ def extract_frames(video_path: str | Path, out_dir: str | Path) -> list[dict[str
     side = int(cfg["max_side"])
     scale = f"scale='if(gt(iw,ih),min({side},iw),-2)':'if(gt(iw,ih),-2,min({side},ih))'"
     frames = []
-    for i, t in enumerate(frame_times(info["duration"])):
+    for i, t in enumerate(frame_times(info["duration"], info["fps"])):
         dest = out_dir / f"frame_{i:02d}.jpg"
-        subprocess.run(
-            ["ffmpeg", "-nostdin", "-v", "error", "-y", "-ss", f"{t}", "-i", str(video_path),
-             "-frames:v", "1", "-vf", scale, "-q:v", "3", str(dest)],
-            check=True,
-        )  # fmt: skip
-        if dest.exists():
-            frames.append({"index": i, "t": t, "path": str(dest)})
+        for seek in (t, t - 0.25, t - 0.5):  # step back if a seek lands past the last frame
+            r = subprocess.run(
+                ["ffmpeg", "-nostdin", "-v", "error", "-y", "-ss", f"{max(0.0, seek):.2f}", "-i", str(video_path),
+                 "-frames:v", "1", "-vf", scale, "-q:v", "3", str(dest)],
+                capture_output=True,
+            )  # fmt: skip
+            if r.returncode == 0 and dest.exists() and dest.stat().st_size > 0:
+                frames.append({"index": i, "t": round(max(0.0, seek), 2), "path": str(dest)})
+                break
+        else:
+            log.warning("could not extract a frame at %.2fs from %s", t, video_path)
+    if not frames:
+        raise ValueError(f"no frames could be extracted from {Path(video_path).name}")
     return frames
 
 
