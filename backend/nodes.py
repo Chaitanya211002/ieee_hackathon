@@ -130,6 +130,9 @@ def status() -> dict[str, Any]:
     with _lock:
         snap = dict(_status)
     cfg = get_config()
+    expected = {f"{n}.{t}" for n, ts in cfg["nodes"].items() for t in ts}
+    if not expected <= set(snap):  # nothing probed yet (first call before the health loop ran)
+        snap = refresh()
     jobs = {}
     for job, configured in cfg["routing"].items():
         target = JOB_TARGET[job]
