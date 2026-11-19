@@ -1,7 +1,8 @@
 """BenchLog FastAPI orchestrator (runs on the M5).
 
 Endpoints (also served under /api for the frontend's dev proxy and built bundle):
-  POST /entry        multipart: file?, text?, question?, experiment_id -> API-contract entry
+  POST /entry        multipart: file?, text?, question?, experiment_id, follow_up_of? -> API-contract entry
+                     (follow_up_of = id of a photo/video entry: ask another question about it)
   GET  /entries      ?experiment_id=&date=YYYY-MM-DD
   GET  /entries/{id}
   GET  /verify       recompute the hash chain; reports the first broken entry
@@ -85,6 +86,7 @@ def create_entry(
     text: str | None = Form(default=None),
     question: str | None = Form(default=None),
     experiment_id: str = Form(default=DEFAULT_EXPERIMENT),
+    follow_up_of: str | None = Form(default=None),
 ) -> dict:
     store = get_store()
     tmp: Path | None = None
@@ -99,6 +101,7 @@ def create_entry(
             content_type=file.content_type if file else None,
             text=text,
             question=question,
+            follow_up_of=follow_up_of,
         )
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc

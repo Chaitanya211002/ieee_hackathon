@@ -96,12 +96,17 @@ class EntryBuilder:
     # ---------------------------------------------------------------------
     def build(
         self, *, file_path: Path | None, filename: str | None, content_type: str | None,
-        text: str | None, question: str | None,
+        text: str | None, question: str | None, follow_up_of: str | None = None,
     ) -> dict[str, Any]:  # fmt: skip
         t0 = time.time()
         text = (text or "").strip()
         question = (question or "").strip() or None
-        if file_path is not None:
+        if follow_up_of and file_path is None:
+            q = question or text
+            if not q:
+                raise ValueError("a follow-up needs a question")
+            out = self._follow_up(follow_up_of, _strip_prefix(q))
+        elif file_path is not None:
             kind = kind_of_file(filename or file_path.name, content_type)
             if kind == "video" and not _has_video_stream(file_path):
                 kind = "audio"  # e.g. an audio-only .webm from MediaRecorder
@@ -133,8 +138,66 @@ class EntryBuilder:
                 annotated = self._save(r["opencv"]["annotated_path"], "colonies_annotated.jpg")
                 r["opencv"]["annotated_path"] = annotated
                 artifacts.append({"kind": "image", "path": annotated})
-        return {"route": "vision", "type": "photo", "summary": r["summary"], "details": {**r, "media": media},
+        return {"route": "vision", "type": "photo", "summary": r["summary"],
+                "details": {**r, "media": {"kind": "image", "path": media}},
                 "artifacts": artifacts, "node": "M5"}  # fmt: skip
+
+    def _local(self, media_path: str) -> Path:
+        """/media/<rel> URL -> file in the store's media folder."""
+        rel = media_path.removeprefix("/media/")
+        p = (self.store.media_dir / rel).resolve()
+        if self.store.media_dir.resolve() not in p.parents or not p.is_file():
+            raise ValueError("the original media for that entry is missing")
+        return p
+
+    def _follow_up(self, parent_id: str, q: str) -> dict[str, Any]:
+        """Ask another question about an earlier photo or video, with the earlier Q&A as context."""
+        from backend.pipelines import video, vision
+
+        parent = self.store.get_entry(parent_id)
+        if parent is None:
+            raise ValueError(f"no entry {parent_id}")
+        if parent["type"] not in ("photo", "video"):
+            raise ValueError("follow-up questions work on photo and video entries")
+        chain = [parent]  # parent, its parent, ... up to the original capture
+        while chain[-1]["details"].get("follow_up_of") and len(chain) < 10:
+            up = self.store.get_entry(chain[-1]["details"]["follow_up_of"])
+            if up is None:
+                break
+            chain.append(up)
+        root = chain[-1]
+        history = [
+            {"question": e["details"].get("question") or (vision.DESCRIBE_PROMPT if e["type"] == "photo"
+                                                         else video.DESCRIBE_PROMPT),
+             "answer": e["details"].get("answer", "")}
+            for e in reversed(chain)
+        ]  # fmt: skip
+        thread = {"follow_up_of": parent_id, "thread_root": root["id"], "history": history}
+        media = root["details"].get("media")
+        media_path = media["path"] if isinstance(media, dict) else (media or root["artifacts"][0]["path"])
+
+        if root["type"] == "photo":
+            with tempfile.TemporaryDirectory() as tmp:
+                r = vision.analyze(self._local(media_path), q, out_dir=tmp, history=history)
+                artifacts = [{"kind": "image", "path": media_path}]
+                if "opencv" in r:
+                    annotated = self._save(r["opencv"]["annotated_path"], "colonies_annotated.jpg")
+                    r["opencv"]["annotated_path"] = annotated
+                    artifacts.append({"kind": "image", "path": annotated})
+            return {"route": "vision.follow_up", "type": "photo", "summary": r["summary"],
+                    "details": {**r, **thread, "media": {"kind": "image", "path": media_path}},
+                    "artifacts": artifacts, "node": "M5"}  # fmt: skip
+
+        frames = root["details"].get("frames", [])
+        local = [{**f, "path": str(self._local(f["path"]))} for f in frames]
+        v = video.ask_frames(local, q, history)
+        summary = " ".join(v["answer"].split())
+        return {"route": "video.follow_up", "type": "video",
+                "summary": summary if len(summary) <= 200 else summary[:199] + "…",
+                "details": {"question": q, "answer": v["answer"], "frames": frames, "duration_s": root["details"].get("duration_s"),
+                            "model": v["model"], "vlm_latency_s": v["latency_s"], "node": "M5", "audio": None,
+                            **thread, "media": {"kind": "video", "path": media_path}},
+                "artifacts": [{"kind": "image", "path": f["path"]} for f in frames], "node": "M5"}  # fmt: skip
 
     def _voice(self, path: Path, name: str, q: str | None) -> dict[str, Any]:
         from backend.pipelines import audio

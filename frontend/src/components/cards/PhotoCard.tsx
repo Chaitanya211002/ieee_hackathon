@@ -1,8 +1,8 @@
 import { useState } from "react";
 import type { Entry } from "../../types";
-import CardShell, { Question } from "./CardShell";
+import CardShell, { FollowUpBar, Question } from "./CardShell";
 
-export default function PhotoCard({ entry }: { entry: Entry }) {
+export default function PhotoCard({ entry, onFollowUp }: { entry: Entry; onFollowUp?: (e: Entry) => void }) {
   const d = entry.details;
   const cv = d.opencv;
   const [showAnnotated, setShowAnnotated] = useState(true);
@@ -34,6 +34,7 @@ export default function PhotoCard({ entry }: { entry: Entry }) {
       {!cv && d.vlm_count_estimate != null && (
         <p className="text-xs text-amber-700">Count is a VLM estimate, not an exact count.</p>
       )}
+      <FollowUpBar entry={entry} onFollowUp={onFollowUp} />
     </CardShell>
   );
 }

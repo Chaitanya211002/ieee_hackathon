@@ -149,18 +149,6 @@ def test_entries_experiments_export_verify(client):
     assert "Hash chain: verified" in md
 
 
-def test_verify_catches_tampering(client):
-    entries = client.get("/entries").json()
-    db = store.get_store().db_path
-    c = sqlite3.connect(db)
-    c.execute("UPDATE entries SET summary = 'tampered' WHERE id = ?", (entries[1]["id"],))
-    c.commit()
-    c.close()
-    v = client.get("/verify").json()
-    assert not v["ok"] and v["first_broken"] == entries[1]["id"]
-    assert "BROKEN" in client.get("/export").text
-
-
 def _win_service_up() -> bool:
     try:
         return httpx.get("http://127.0.0.1:8001/health", timeout=2).json().get("ok") is True
@@ -183,3 +171,42 @@ def test_voice_served_by_win_and_fallback(client, monkeypatch):
     nodes._status.clear()
     e = _post(client, PACK / "audio" / "p_aud_002.wav", text="Transcribe this audio.", mime="audio/wav")
     assert e["node"] == "M5" and "wind" in e["details"]["transcript"].lower()
+
+
+def test_photo_follow_up(client):
+    parent = _post(client, PACK / "image" / "p_img_012.jpg", text="How many cats are in this image?", mime="image/jpeg")
+    e = _post(client, text="What are they lying on?", follow_up_of=parent["id"])
+    d = e["details"]
+    assert e["type"] == "photo" and d["follow_up_of"] == parent["id"] and d["thread_root"] == parent["id"]
+    assert d["history"][0]["question"] == "How many cats are in this image?"
+    assert d["answer"] and d["question"] == "What are they lying on?"
+    assert e["artifacts"][0]["path"] == parent["artifacts"][0]["path"]  # reuses the stored photo
+
+    # a follow-up to the follow-up carries the whole thread
+    e2 = _post(client, text="Is either cat asleep?", follow_up_of=e["id"])
+    assert e2["details"]["thread_root"] == parent["id"] and len(e2["details"]["history"]) == 2
+
+
+def test_video_follow_up(client):
+    parent = next(x for x in client.get("/entries").json() if x["type"] == "video")
+    e = _post(client, text="What colour is the bar?", follow_up_of=parent["id"])
+    assert e["type"] == "video" and e["details"]["follow_up_of"] == parent["id"]
+    assert "blue" in e["details"]["answer"].lower()
+
+
+def test_follow_up_errors(client):
+    note = _post(client, text="note: follow-up target")
+    assert client.post("/entry", data={"text": "why?", "follow_up_of": note["id"]}).status_code == 400
+    assert client.post("/entry", data={"text": "why?", "follow_up_of": "nope"}).status_code == 400
+
+
+def test_verify_catches_tampering(client):
+    entries = client.get("/entries").json()
+    db = store.get_store().db_path
+    c = sqlite3.connect(db)
+    c.execute("UPDATE entries SET summary = 'tampered' WHERE id = ?", (entries[1]["id"],))
+    c.commit()
+    c.close()
+    v = client.get("/verify").json()
+    assert not v["ok"] and v["first_broken"] == entries[1]["id"]
+    assert "BROKEN" in client.get("/export").text

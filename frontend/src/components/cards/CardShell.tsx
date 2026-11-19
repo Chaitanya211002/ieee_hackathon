@@ -39,6 +39,28 @@ export default function CardShell({ entry, children }: { entry: Entry; children:
   );
 }
 
+export function FollowUpBar({ entry, onFollowUp }: { entry: Entry; onFollowUp?: (e: Entry) => void }) {
+  const d = entry.details;
+  const earlier: { question: string }[] = d.history ?? [];
+  return (
+    <>
+      {d.follow_up_of && earlier.length > 0 && (
+        <p className="text-[11px] text-slate-500">
+          ↩ Follow-up · earlier: “{earlier[earlier.length - 1].question.slice(0, 80)}”
+        </p>
+      )}
+      {onFollowUp && (
+        <button
+          className="rounded-md border border-sky-300 px-2 py-1 text-xs text-sky-800 hover:bg-sky-50"
+          onClick={() => onFollowUp(entry)}
+        >
+          Ask a follow-up
+        </button>
+      )}
+    </>
+  );
+}
+
 export function Question({ q }: { q?: string | null }) {
   if (!q) return null;
   return <p className="text-xs text-slate-500">Q: {q}</p>;

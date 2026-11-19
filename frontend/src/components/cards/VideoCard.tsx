@@ -1,5 +1,5 @@
 import type { Entry } from "../../types";
-import CardShell, { Question } from "./CardShell";
+import CardShell, { FollowUpBar, Question } from "./CardShell";
 
 interface Frame {
   index: number;
@@ -7,7 +7,7 @@ interface Frame {
   path: string;
 }
 
-export default function VideoCard({ entry }: { entry: Entry }) {
+export default function VideoCard({ entry, onFollowUp }: { entry: Entry; onFollowUp?: (e: Entry) => void }) {
   const d = entry.details;
   const frames: Frame[] = d.frames ?? [];
   return (
@@ -33,6 +33,7 @@ export default function VideoCard({ entry }: { entry: Entry }) {
       <p className="text-[11px] text-slate-400">
         {frames.length} frames over {d.duration_s}s, sent in order to {d.model}
       </p>
+      <FollowUpBar entry={entry} onFollowUp={onFollowUp} />
     </CardShell>
   );
 }

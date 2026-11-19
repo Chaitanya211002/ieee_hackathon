@@ -14,6 +14,7 @@ interface Pending {
 
 const pendingLabel = (file: File | null, text: string) => {
   if (!file) return text.toLowerCase().startsWith("code:") ? "Writing and running code…" : "Thinking…";
+  // follow-ups have no file; "Thinking…" covers them
   if (file.type.startsWith("image/")) return "Looking at the photo…";
   if (file.type.startsWith("audio/")) return "Transcribing and listening…";
   if (file.type.startsWith("video/")) return "Watching the video (about 30–40 s)…";
@@ -32,6 +33,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [drawer, setDrawer] = useState<"none" | "left" | "right">("none");
+  const [followUp, setFollowUp] = useState<Entry | null>(null);
   const bottom = useRef<HTMLDivElement>(null);
 
   const refresh = useCallback(async () => {
@@ -69,6 +71,8 @@ export default function App() {
     if (file) form.append("file", file, file.name);
     if (text) form.append("text", text);
     form.append("experiment_id", current);
+    if (followUp && !file) form.append("follow_up_of", followUp.id);
+    setFollowUp(null);
     try {
       await api.createEntry(form);
       await refresh();
@@ -134,7 +138,7 @@ export default function App() {
               </div>
             )}
             {entries.map((e) => (
-              <EntryCard key={e.id} entry={e} />
+              <EntryCard key={e.id} entry={e} onFollowUp={setFollowUp} />
             ))}
             {pending.map((p) => (
               <div key={p.id} className="flex items-center gap-2 rounded-xl border border-dashed border-sky-300 bg-sky-50 px-3 py-3 text-sm text-sky-800">
@@ -144,7 +148,15 @@ export default function App() {
             ))}
             <div ref={bottom} />
           </div>
-          <CaptureBar busy={false} onSend={send} />
+          <CaptureBar
+            busy={false}
+            onSend={send}
+            followUp={
+              followUp &&
+              `${followUp.type} from ${new Date(followUp.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
+            }
+            onClearFollowUp={() => setFollowUp(null)}
+          />
         </main>
         <div className={`${panel("right")} border-l border-slate-200 xl:static xl:z-auto xl:block xl:w-72 xl:shadow-none`}>
           <StatusPanel status={status} entries={entries} />

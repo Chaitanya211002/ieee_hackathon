@@ -22,6 +22,7 @@ from typing import Any
 from backend import nodes
 from backend.config import get_config
 from backend.pipelines import audio
+from backend.pipelines.vision import thread_messages
 
 log = logging.getLogger("benchlog.video")
 
@@ -139,7 +140,10 @@ def contact_sheets(frames: list[dict[str, Any]], per_sheet: int, cols: int) -> l
     return sheets
 
 
-def ask_frames(frames: list[dict[str, Any]], question: str | None) -> dict[str, Any]:
+def ask_frames(
+    frames: list[dict[str, Any]], question: str | None, history: list[dict[str, str]] | None = None
+) -> dict[str, Any]:
+    """Ask about ordered frames. `history` holds earlier {"question", "answer"} turns (follow-ups)."""
     cfg = get_config()
     vcfg = cfg["video"]
     model = cfg["models"]["vision"]
@@ -148,19 +152,25 @@ def ask_frames(frames: list[dict[str, Any]], question: str | None) -> dict[str, 
     if vcfg.get("mode", "sheets") == "sheets":
         per, cols = int(vcfg.get("frames_per_sheet", 5)), int(vcfg.get("sheet_cols", 5))
         images = [base64.b64encode(b).decode("ascii") for b in contact_sheets(frames, per, cols)]
-        prompt = (
+        intro = (
             f"{len(frames)} frames sampled in time order ({listing}), tiled left to right, top to bottom, "
             f"across {len(images)} image(s); each tile is labelled with its frame number and time. "
-            f"Read the tiles in order as one video.\n\n{q}"
+            "Read the tiles in order as one video.\n\n"
         )
     else:
         images = [base64.b64encode(Path(f["path"]).read_bytes()).decode("ascii") for f in frames]
-        prompt = f"{len(frames)} frames in time order: {listing}.\n\n{q}"
+        intro = f"{len(frames)} frames in time order: {listing}.\n\n"
+    # The frame description belongs with the images, i.e. in the first user turn.
+    if history:
+        history = [{**history[0], "question": intro + history[0]["question"]}, *history[1:]]
+        prompt = q
+    else:
+        prompt = intro + q
     t0 = time.time()
     answer = nodes.chat(
         "m5",
         model,
-        [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": prompt, "images": images}],
+        thread_messages(SYSTEM_PROMPT, images, prompt, history),
     )
     latency = round(time.time() - t0, 2)
     log.info("video.ask_frames node=M5 mode=%s frames=%d images=%d latency=%.2fs",

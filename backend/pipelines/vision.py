@@ -55,21 +55,39 @@ def _encode(image_path: str | Path, max_side: int) -> str:
     return base64.b64encode(buf.tobytes()).decode("ascii")
 
 
-def describe(image_path: str | Path, question: str | None = None) -> dict[str, Any]:
-    """Ask Qwen3-VL about one image. Returns {"answer", "question", "node", "latency_s", "model"}."""
+def thread_messages(
+    system: str, images: list[str], question: str, history: list[dict[str, str]] | None
+) -> list[dict[str, Any]]:
+    """Chat messages for a question about media, with earlier Q&A turns (follow-ups) in between.
+
+    The media is attached to the first user turn only, so a follow-up costs no extra image tokens
+    beyond the original question.
+    """
+    turns = [*(history or []), {"question": question, "answer": None}]
+    msgs: list[dict[str, Any]] = [{"role": "system", "content": system}]
+    for i, t in enumerate(turns):
+        user: dict[str, Any] = {"role": "user", "content": t["question"]}
+        if i == 0:
+            user["images"] = images
+        msgs.append(user)
+        if t["answer"] is not None:
+            msgs.append({"role": "assistant", "content": t["answer"]})
+    return msgs
+
+
+def describe(
+    image_path: str | Path, question: str | None = None, history: list[dict[str, str]] | None = None
+) -> dict[str, Any]:
+    """Ask Qwen3-VL about one image. `history` holds earlier {"question", "answer"} turns about it.
+
+    Returns {"answer", "question", "node", "latency_s", "model"}.
+    """
     cfg = get_config()
     model = cfg["models"]["vision"]
     img = _encode(image_path, cfg["vision"]["max_side"])
     prompt = question.strip() if question and question.strip() else DESCRIBE_PROMPT
     t0 = time.time()
-    answer = nodes.chat(
-        "m5",
-        model,
-        [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": prompt, "images": [img]},
-        ],
-    )
+    answer = nodes.chat("m5", model, thread_messages(SYSTEM_PROMPT, [img], prompt, history))
     latency = round(time.time() - t0, 2)
     log.info("vision.describe node=M5 latency=%.2fs", latency)
     return {"answer": answer, "question": question, "model": model, "node": "M5", "latency_s": latency}
@@ -159,10 +177,14 @@ def analyze(
     question: str | None = None,
     out_dir: str | Path | None = None,
     colonies: bool | None = None,
+    history: list[dict[str, str]] | None = None,
 ) -> dict[str, Any]:
-    """Full photo entry: VLM answer, plus OpenCV count when the question is about colonies."""
+    """Full photo entry: VLM answer, plus OpenCV count when the question is about colonies.
+
+    `history` makes this a follow-up: earlier {"question", "answer"} turns about the same image.
+    """
     t0 = time.time()
-    vlm = describe(image_path, question)
+    vlm = describe(image_path, question, history)
     result: dict[str, Any] = {
         "question": question,
         "answer": vlm["answer"],
