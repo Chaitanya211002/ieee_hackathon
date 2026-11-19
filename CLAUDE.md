@@ -38,7 +38,7 @@ M5 in `eval/results.md`. Nothing on WIN is tied to an IP address, so it needs no
 network. Not done: nothing has been called from the Mac yet, and the Windows firewall rules are
 still missing (item 5), so the M5 cannot reach WIN until a person adds them.
 
-1. **Move the coder to the M5.** In `backend/config.yaml` set `routing.coder: m5`, and commit.
+1. **[Done on the M5, Nov 19]** **Move the coder to the M5.** In `backend/config.yaml` set `routing.coder: m5`, and commit.
    Why: the RTX 3060 has 6 GB. Whisper holds 2.3 GB and Qwen2.5-Coder 7B needs 6.5 GB at
    `num_ctx` 16384 (4.7 GB of weights alone). Measured on WIN: with both loaded, Ollama keeps
    48% of the coder on the GPU and it runs at 12.5 tok/s after a 50 s cold load; alone it
@@ -46,7 +46,7 @@ still missing (item 5), so the M5 cannot reach WIN until a person adds them.
    job that GPU is good at. Keep `audio: win` and `sandbox: win`. Nothing changes while WIN
    is unconfigured, so the tests and the eval numbers are unaffected.
 
-2. **Make the docs say the same thing, in that commit.** The Nodes table and architecture
+2. **[Done on the M5, Nov 19]** **Make the docs say the same thing, in that commit.** The Nodes table and architecture
    notes in this file; the Hardware and "Models and why" tables in `README.md` (the coder row
    says it fits the 3060's 6 GB, which only holds with nothing else loaded); the WIN paragraph
    in `README.md` (no Ollama needed there); `docs/win-service-contract.md` (drop "plus Ollama
@@ -121,7 +121,7 @@ React PWA (laptop + phone over LAN)
 FastAPI orchestrator (M5) ── routes by file type, NOT by LLM
         ├── vision    → Qwen3-VL 8B Instruct (images, video frames, doc Q&A)
         ├── audio     → Whisper large-v3-turbo + AST sound classifier
-        ├── coder     → Qwen2.5-Coder 7B + sandboxed execution
+        ├── coder     → Qwen2.5-Coder 7B (M5) + sandboxed execution (WIN, fallback M5)
         └── docs      → nomic-embed-text + Chroma, grounded answers
         │
 SQLite notebook (hash-chained entries) + local media folder
@@ -131,8 +131,8 @@ SQLite notebook (hash-chained entries) + local media folder
 
 | Node | Hardware | Runs | Owns (edits) |
 |---|---|---|---|
-| **M5** (primary) | MacBook Air M5, 24 GB, macOS, fanless | Orchestrator, frontend, Qwen3-VL 8B Instruct, nomic-embed-text, Chroma, SQLite. Also the local fallback for EVERY job. | everything outside `backend/services/win/` |
-| **WIN** | i9-12900H, RTX 3060 6 GB, 16 GB RAM, Windows | Qwen2.5-Coder 7B on the GPU (Ollama), WIN service on :8001 (Whisper on CUDA + AST + code sandbox) | `backend/services/win/` |
+| **M5** (primary) | MacBook Air M5, 24 GB, macOS, fanless | Orchestrator, frontend, Qwen3-VL 8B Instruct, Qwen2.5-Coder 7B, nomic-embed-text, Chroma, SQLite. Also the local fallback for EVERY job. | everything outside `backend/services/win/` |
+| **WIN** | i9-12900H, RTX 3060 6 GB, 16 GB RAM, Windows | WIN service on :8001: Whisper on CUDA + AST (audio) and the code sandbox. No Ollama needed. | `backend/services/win/` |
 
 **Which laptop am I on?** macOS → M5. Windows → WIN. Work in the area that laptop owns.
 Changing the other node's code, or the WIN service contract (`docs/win-service-contract.md`),
@@ -305,7 +305,7 @@ renaming or removing keys is not.
   Mac for testing, install that file without the `nvidia-*` lines (Whisper then runs on CPU).
   `check_node.py`'s speech tests need Windows text-to-speech and are skipped elsewhere.
 - The MacBook Air is fanless and throttles under sustained load (long evals, back-to-back videos).
-- Windows firewall must allow ports 8001 and 11434 for the LAN.
+- Windows firewall must allow port 8001 for the LAN (11434 only if Ollama is ever used on WIN).
 - The RTX 3060's 6 GB cannot hold Whisper and Qwen2.5-Coder 7B together at `num_ctx` 16384.
   Measured on WIN: with both loaded the coder runs 48% on the GPU at 12.5 tok/s (50 s cold
   load); alone it reaches 26 tok/s, but Whisper on the CPU then takes 19 s for a 10 s clip.

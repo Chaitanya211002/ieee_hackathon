@@ -26,8 +26,8 @@ Every entry is chained: `hash = sha256(prev_hash + canonical_json(entry_without_
 
 | Node | Machine | Runs |
 |---|---|---|
-| **M5** (primary) | MacBook Air M5, 24 GB unified memory, fanless | FastAPI orchestrator, React frontend, Qwen3-VL 8B (images, video, doc Q&A), nomic-embed-text, Chroma, SQLite. Also the local fallback for **every** job. |
-| **WIN** | Windows laptop, i9-12900H, RTX 3060 6 GB, 16 GB RAM | Qwen2.5-Coder 7B on the GPU (Ollama), Whisper large-v3-turbo on CUDA + AST sound classifier, code sandbox (`backend/services/win/`). |
+| **M5** (primary) | MacBook Air M5, 24 GB unified memory, fanless | FastAPI orchestrator, React frontend, Qwen3-VL 8B (images, video, doc Q&A), Qwen2.5-Coder 7B, nomic-embed-text, Chroma, SQLite. Also the local fallback for **every** job. |
+| **WIN** | Windows laptop, i9-12900H, RTX 3060 6 GB, 16 GB RAM | Whisper large-v3-turbo on CUDA + AST sound classifier, code sandbox (`backend/services/win/`). |
 
 The whole stack fits on the M5 alone (about 16 GB with every model loaded, including the coder fallback), so the demo works
 with the Windows laptop unplugged.
@@ -37,7 +37,7 @@ with the Windows laptop unplugged.
 | Job | Model | Why this one |
 |---|---|---|
 | Images, video, doc answers | **Qwen3-VL 8B Instruct** (`qwen3-vl:8b-instruct`, Ollama) | Strongest open-weight VLM that fits next to everything else in 24 GB; reads text in photos well and handles multi-image input for video. We use the *instruct* build: the plain `qwen3-vl:8b` tag is the thinking variant, which ignores `think=false` and was 2–3× slower (and miscounted more) in our tests. One model also serves text Q&A, so no second LLM sits in memory. |
-| Code | **Qwen2.5-Coder 7B** (Ollama) | Best open coding model at this size; fits the RTX 3060's 6 GB at Q4 and also runs on the M5 as fallback. |
+| Code | **Qwen2.5-Coder 7B** (Ollama, on the M5) | Best open coding model at this size. It runs on the M5: the RTX 3060's 6 GB cannot hold it (6.5 GB at a 16k context) next to Whisper, and with both loaded it dropped to 12.5 tok/s, half on the CPU. The generated code still runs in the WIN sandbox when WIN is connected. |
 | Speech | **Whisper large-v3-turbo** | Near large-v3 accuracy at a fraction of the decode cost. faster-whisper on CUDA on WIN; **mlx-whisper** on the M5 (faster-whisper cannot use the Mac GPU). |
 | Sound events | **AST** fine-tuned on AudioSet (`MIT/ast-finetuned-audioset-10-10-0.4593`) | 527 everyday sound classes (alarms, beeps, glass, liquid, speech); small enough for CPU. Scored with sigmoid, since AudioSet is multi-label. |
 | Retrieval | **nomic-embed-text** + Chroma | Small, fast, good retrieval quality; uses the `search_document:` / `search_query:` prefixes it was trained with. |
@@ -93,13 +93,17 @@ service port in the Windows firewall (`open_firewall.bat`, once, as administrato
 
 Put both laptops on your own router or a phone hotspot (venue Wi-Fi usually blocks
 laptop-to-laptop traffic). The Windows laptop needs no changes on a new network: run
-`net_info.bat` there and it prints its current address. On the M5, replace `WIN_IP` in
-`backend/config.yaml` with that address and restart the orchestrator:
+`net_info.bat` there and it prints its current address. On the M5, put that address in a local
+copy of the config (the tracked `backend/config.yaml` keeps the `WIN_IP` placeholder, which the
+tests and eval rely on) and start the orchestrator with it:
 
-```yaml
-nodes:
-  win: {ollama: http://192.168.8.20:11434, service: http://192.168.8.20:8001}
+```bash
+cp backend/config.yaml data/config.local.yaml     # data/ is gitignored
+# edit data/config.local.yaml:   nodes.win.service: http://192.168.8.20:8001
+BENCHLOG_CONFIG=data/config.local.yaml .venv/bin/uvicorn backend.main:app --host 0.0.0.0 --port 8000
 ```
+
+Re-copy the file whenever `backend/config.yaml` changes.
 
 The address changes with the network, so repeat this at a new venue. The Windows laptop's
 mDNS name (`laptop-8k7cobtd.local`) can be used in place of the address where the network
@@ -107,8 +111,8 @@ passes mDNS; check with `ping laptop-8k7cobtd.local` on the Mac first.
 
 ## How fallback works
 
-`backend/config.yaml` `routing` says which node serves each job (`vision`, `docs` → M5;
-`coder`, `audio`, `sandbox` → WIN). A background loop checks every node every 5 s (Ollama
+`backend/config.yaml` `routing` says which node serves each job (`vision`, `docs`, `coder` → M5;
+`audio`, `sandbox` → WIN). A background loop checks every node every 5 s (Ollama
 `/api/tags`, WIN service `/health`). When a job's node is up, the request goes there; if it is
 down, or the call errors or times out mid-request, the job runs on the M5 instead and is
 marked as a fallback in the entry and in the status panel. A WIN failure never fails a

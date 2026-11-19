@@ -1,7 +1,7 @@
 # WIN service contract
 
-The Windows node runs a FastAPI service on port **8001** (plus Ollama on 11434 serving
-`qwen2.5-coder:7b`). The M5 orchestrator calls these endpoints. If any call fails or times
+The Windows node runs a FastAPI service on port **8001**; no Ollama is needed there (the coder
+model runs on the M5). The M5 orchestrator calls these endpoints. If any call fails or times
 out, the M5 runs the job locally, so the WIN service must never be required for correctness.
 
 - POST /transcribe (multipart file) -> {"text": str, "segments": [{"start","end","text"}], "language": str}
@@ -22,5 +22,4 @@ out, the M5 runs the job locally, so the WIN service must never be required for 
   `main.py`, run it with a separate Python/venv, 20 s timeout, cwd = temp dir, no network.
   Return every `*.png` in the temp dir as `artifacts` (base64). On timeout return
   `exit_code: -1` and put "Timed out after 20 s" in `stderr`.
-- Open Windows firewall for TCP 8001 and 11434 on the private network.
-- Start Ollama with `OLLAMA_HOST=0.0.0.0` so the M5 can reach it.
+- Open the Windows firewall for TCP 8001 on the private network (`open_firewall.bat`).

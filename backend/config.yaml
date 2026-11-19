@@ -9,7 +9,7 @@ nodes:
 routing:
   vision: m5
   docs: m5
-  coder: win     # fallback m5
+  coder: m5      # the RTX 3060 (6 GB) cannot hold Whisper and the coder together; see CLAUDE.md
   audio: win     # fallback m5
   sandbox: win   # fallback m5
 
