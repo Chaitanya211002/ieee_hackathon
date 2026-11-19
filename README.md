@@ -84,10 +84,10 @@ network. (Alternatively, `npm run build` and the API serves the built app at `ht
 
 ### WIN (Windows)
 
-See `backend/services/win/README.md`. In short: run `setup.bat` and
-`ollama pull qwen2.5-coder:7b` once while online, open ports 8001 and 11434 in the Windows
-firewall (`open_firewall.bat`, once, as administrator), then `start_ollama.bat` and `run.bat`.
-The sandbox accepts requests from devices on the same local network (`RUN_CODE_CLIENTS=lan`).
+See `backend/services/win/README.md`. In short: run `setup.bat` once while online, open the
+service port in the Windows firewall (`open_firewall.bat`, once, as administrator), then
+`run.bat`. The sandbox accepts requests from devices on the same local network
+(`RUN_CODE_CLIENTS=lan`).
 
 ### Connect the two
 

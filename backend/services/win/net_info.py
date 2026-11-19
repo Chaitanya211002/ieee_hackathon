@@ -1,8 +1,8 @@
 """What the M5 needs to reach this laptop on the network it is on right now.
 
 Run net_info.bat after joining a new network (demo day). It prints this laptop's name and
-addresses, checks the WIN service, Ollama and the firewall rules, and prints the `nodes.win`
-line for backend/config.yaml. Nothing here needs editing when the network changes.
+addresses, checks the WIN service and the firewall rules, and prints the address the M5 needs
+for nodes.win.service. Nothing here needs editing when the network changes.
 """
 
 from __future__ import annotations
@@ -105,19 +105,26 @@ def main() -> int:
         print("  Service    NOT RUNNING")
         todo.append("Start the service: run.bat")
 
+    # Ollama is optional here: the 6 GB card cannot hold Whisper and the coder together, so the
+    # coder is meant to run on the M5 (see the README). Report it, but do not ask for it.
     try:
         tags = requests.get(f"http://127.0.0.1:{OLLAMA_PORT}/api/tags", timeout=5).json()
         models = [m["name"] for m in tags.get("models", [])]
-        everywhere = listening_on_all(OLLAMA_PORT)
-        reach = {True: "reachable from the network", False: "THIS LAPTOP ONLY", None: "reach unknown"}[everywhere]
-        print(f"  Ollama     running, {reach}, {coder} {'present' if coder in models else 'MISSING'}")
-        if everywhere is False:
-            todo.append("Ollama only listens on this laptop: run start_ollama.bat.")
-        if coder not in models:
-            todo.append(f"Pull the coder model while online: ollama pull {coder}")
+        loaded = [
+            m["name"]
+            for m in requests.get(f"http://127.0.0.1:{OLLAMA_PORT}/api/ps", timeout=5).json().get("models", [])
+        ]
+        reach = {True: "reachable from the network", False: "this laptop only", None: "reach unknown"}[
+            listening_on_all(OLLAMA_PORT)
+        ]
+        print(f"  Ollama     optional; running, {reach}, {coder} {'present' if coder in models else 'not pulled'}")
+        if loaded:
+            todo.append(
+                f"Ollama has {', '.join(loaded)} loaded, which competes with Whisper for the GPU. "
+                f"Unload it (ollama stop {loaded[0]}) unless the coder is meant to run here."
+            )
     except (requests.RequestException, ValueError):
-        print("  Ollama     NOT RUNNING")
-        todo.append("Start Ollama for the network: start_ollama.bat")
+        print("  Ollama     optional; not running")
 
     rules = firewall_rules()
     if rules is not None:
@@ -125,11 +132,11 @@ def main() -> int:
         if rules < 2:
             todo.append("Right-click open_firewall.bat, Run as administrator (once; it covers every network).")
 
-    print("\nOn the M5, replace WIN_IP in backend/config.yaml (nodes.win) with:")
+    print("\nOn the M5, nodes.win.service (in data/config.local.yaml, see CLAUDE.md) should be:")
     for ip, _ in addrs:
-        print(f"  win: {{ollama: http://{ip}:{OLLAMA_PORT}, service: http://{ip}:{SERVICE_PORT}}}")
+        print(f"  http://{ip}:{SERVICE_PORT}")
     print(f"or, where the network passes mDNS (on the Mac: ping {name}), the name, which never changes:")
-    print(f"  win: {{ollama: http://{name}:{OLLAMA_PORT}, service: http://{name}:{SERVICE_PORT}}}")
+    print(f"  http://{name}:{SERVICE_PORT}")
 
     if todo:
         print("\nTo do on this laptop:")

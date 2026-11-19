@@ -42,15 +42,15 @@ Then check it, which also writes `test_results.md`:
 
 Nothing on this laptop is tied to an IP address, so nothing here needs editing:
 
-- The service and Ollama listen on every interface.
+- The service listens on every interface.
 - The firewall rules (`open_firewall.bat`, once) allow the local subnet of whatever network
   the laptop is on.
 - `RUN_CODE_CLIENTS=lan` follows the network too.
 
 After joining the new network, run `net_info.bat`. It prints this laptop's name and address
-there, checks the service, Ollama and the firewall, and prints the `nodes.win` line for
-`backend/config.yaml` on the M5, which holds the placeholder `WIN_IP` until someone fills it
-in. Two ways to fill it in:
+there, checks the service and the firewall, and prints the value the M5 needs for
+`nodes.win.service` (the M5 keeps it in a local copy of the config; see "Connecting the two" in
+`CLAUDE.md`). Two forms it can take:
 
 1. **By address**: always works. It changes with the network, so do this at the venue
    (unless the router gives this laptop a fixed IP). `net_info.bat` prints the current one.
@@ -59,21 +59,13 @@ in. Two ways to fill it in:
    been tested from the Mac yet. Check with `ping laptop-8k7cobtd.local` there, and that the
    reply comes from this laptop's Wi-Fi address (it also has VM and VPN adapters).
 
-Do the online work before leaving: `setup.bat` and `ollama pull` need the internet, the demo
-does not. Use our own router or a phone hotspot; venue Wi-Fi usually blocks laptop-to-laptop
+Do the online work before leaving: `setup.bat` needs the internet, the demo does not. Use our own router or a phone hotspot; venue Wi-Fi usually blocks laptop-to-laptop
 traffic.
 
-## Ollama (coder model)
+## Ollama (coder model): optional
 
-The contract also has this laptop serve `qwen2.5-coder:7b` on port 11434:
-
-```
-ollama pull qwen2.5-coder:7b      (once, online, about 4.7 GB)
-start_ollama.bat                  (stops the tray app's Ollama and serves on 0.0.0.0)
-```
-
-The Ollama tray app only listens on this laptop. To make it listen on the network after every
-reboot without `start_ollama.bat`, set the user environment variable `OLLAMA_HOST=0.0.0.0`.
+The original plan had this laptop also serve `qwen2.5-coder:7b` on port 11434. It can, but it
+should not while it is doing audio:
 
 **The 6 GB card cannot hold Whisper and the 7B coder at once.** Measured on this laptop with
 the orchestrator's settings (`num_ctx` 16384, about 245 output tokens):
@@ -84,13 +76,17 @@ the orchestrator's settings (`num_ctx` 16384, about 245 output tokens):
 | Coder only, Whisper on CPU | 26.3 tok/s | 85% | 10 s (first call: +6 s) | 19 s |
 
 So pick one job for this GPU. Whisper on the CPU is slower than real time, which rules out the
-second row for audio. The sensible split is Whisper here and the coder on the M5
-(`routing.coder: m5` in `backend/config.yaml`), unless a side-by-side run shows this laptop's
-12.5 tok/s beating the M5.
+second row for audio. The split is Whisper and the sandbox here, the coder on the M5
+(`routing.coder: m5` in `backend/config.yaml`). The service does not need Ollama at all.
 
-Start `run.bat` before anything loads the coder. If the coder is already filling the GPU when
-the service starts, Whisper silently falls back to the CPU; `/health` and `net_info.bat` show
-which device it is on.
+Start `run.bat` before anything else uses the GPU. If a model is already filling it when the
+service starts, Whisper silently falls back to the CPU; `/health` and `net_info.bat` show which
+device it is on.
+
+If the coder is ever routed here anyway: `ollama pull qwen2.5-coder:7b` (once, online, about
+4.7 GB), then `start_ollama.bat`, which stops the tray app's Ollama and serves on 0.0.0.0. The
+tray app itself only listens on this laptop unless the user environment variable
+`OLLAMA_HOST=0.0.0.0` is set.
 
 ## Responses
 
