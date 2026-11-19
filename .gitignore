@@ -1,0 +1,14 @@
+# Local data: practice pack, media, sqlite, chroma. Must never be committed (practice-pack license rules).
+data/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+node_modules/
+frontend/dist/
+.DS_Store
+eval/raw/
+
+# Practice pack archive (license: never commit)
+archive.zip
+*.zip

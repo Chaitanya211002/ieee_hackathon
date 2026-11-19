@@ -1,0 +1,57 @@
+# BenchLog configuration. All model names, node URLs and thresholds live here.
+# Replace WIN_IP with the Windows laptop's fixed LAN IP (e.g. 192.168.8.20).
+
+nodes:
+  m5:  {ollama: http://localhost:11434}
+  win: {ollama: http://WIN_IP:11434, service: http://WIN_IP:8001}
+
+routing:
+  vision: m5
+  docs: m5
+  coder: win     # fallback m5
+  audio: win     # fallback m5
+  sandbox: win   # fallback m5
+
+models:
+  vision: qwen3-vl:8b          # images, video frames, doc Q&A
+  text: qwen3-vl:8b            # text-only answering (doc Q&A, questions about transcripts)
+  coder: qwen2.5-coder:7b
+  embed: nomic-embed-text
+  whisper: mlx-community/whisper-large-v3-turbo
+  sound: MIT/ast-finetuned-audioset-10-10-0.4593
+
+thresholds:
+  doc_similarity: 0.35   # cosine similarity; below this -> "Not in your indexed protocols."
+  sound_conf: 0.5        # only surface sound labels >= this in the summary
+
+video:
+  fps: 1
+  max_frames: 10
+  max_side: 768
+  # Short clips (<max_frames s) get fewer than max_frames at 1 fps. When true, raise fps so
+  # short clips still yield up to max_frames frames (helps motion/count questions).
+  adaptive_fps: true
+
+sandbox:
+  timeout_s: 20
+  max_retries: 2
+
+docs:
+  chunk_words: 500
+  top_k: 4
+
+health:
+  interval_s: 5
+  timeout_s: 2
+
+timeouts:
+  win_service_s: 60     # per request to the WIN service before falling back to m5
+  ollama_s: 300
+
+paths:
+  data: data
+  media: data/media
+  db: data/benchlog.sqlite3
+  chroma: data/chroma
+  practice_pack: data/practice-pack
+  practice_meta: data/archive    # items.json / answers.json

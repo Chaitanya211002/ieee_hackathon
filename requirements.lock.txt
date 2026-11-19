@@ -1,0 +1,16 @@
+chromadb==1.5.9
+fastapi==0.165.0
+httpx==0.28.1
+matplotlib==3.11.2
+mlx-whisper==0.4.3
+numpy==2.4.6
+ollama==0.6.3
+opencv-python==5.1.0.95
+pandas==3.1.1
+pymupdf==2.1
+pytest==9.2.0
+python-multipart==0.0.34
+PyYAML==6.0.3
+torch==2.15.0
+transformers==5.23.0
+uvicorn==0.54.0
