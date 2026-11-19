@@ -1,2 +1,182 @@
-# ieee_hackathon
-An offline AI lab notebook for wet-lab researchers. Capture plate photos, voice notes, video clips and protocol questions at the bench; local open-weight models (Qwen3-VL, Whisper, Qwen2.5-Coder) annotate every entry, run verified analysis code, and keep a tamper-evident log. Built for the IEEE AI Hackathon 2026.
+# BenchLog
+
+An offline AI lab notebook for wet-lab researchers. At the bench you capture plate photos,
+voice notes, short video clips, protocol questions and analysis requests; each capture becomes
+a timestamped, hash-chained notebook entry that a local open-weight model annotates. At the
+end of the day you export a clean Markdown lab log. Everything runs on two laptops the lab
+already owns, and nothing leaves the local network.
+
+Built for the IEEE AI Hackathon (Multimodal LLM Challenge), Roux Institute, November 18–20, 2026.
+
+## What it does
+
+| You capture | BenchLog does | Entry |
+|---|---|---|
+| Photo (plate, gel, label, anything) | Qwen3-VL describes it or answers your question. For colony questions it also runs an OpenCV blob count and shows both numbers; the VLM number is always labelled an estimate. "Ask a follow-up" asks another question about the same photo with the earlier answers as context. | `photo` |
+| Voice note or sound | Whisper transcript plus the top-3 AudioSet sound labels (AST). Sounds with confidence ≥ 0.5 show as alerts. Questions are answered from the transcript and labels. | `voice` |
+| Video clip | Up to 10 frames, evenly spaced from the first to the last frame, sent to Qwen3-VL in order as one sequence; the audio track (if any) goes through the audio pipeline. Follow-up questions reuse the stored frames. | `video` |
+| Protocol PDF / text + a question | Answers only from your indexed protocols, with a section citation, or says **"Not in your indexed protocols."** | `protocol_qa` |
+| `code: …`, a CSV + a request, or "Complete this Python function…" | Qwen2.5-Coder writes Python, the sandbox runs it, errors are fed back (up to 2 retries). Code, stdout and plots are shown, and only code that actually ran is marked "Executed". | `analysis` |
+| Any other text | Saved as a log note. | `note` |
+
+Every entry is chained: `hash = sha256(prev_hash + canonical_json(entry_without_hash))`.
+`GET /verify` recomputes the chain and names the first entry that was edited or deleted.
+
+## Hardware
+
+| Node | Machine | Runs |
+|---|---|---|
+| **M5** (primary) | MacBook Air M5, 24 GB unified memory, fanless | FastAPI orchestrator, React frontend, Qwen3-VL 8B (images, video, doc Q&A), nomic-embed-text, Chroma, SQLite. Also the local fallback for **every** job. |
+| **WIN** | Windows laptop, i9-12900H, RTX 3060 6 GB, 16 GB RAM | Qwen2.5-Coder 7B on the GPU (Ollama), Whisper large-v3-turbo on CUDA + AST sound classifier, code sandbox (`backend/services/win/`). |
+
+The whole stack fits on the M5 alone (about 16 GB with every model loaded, including the coder fallback), so the demo works
+with the Windows laptop unplugged.
+
+## Models and why
+
+| Job | Model | Why this one |
+|---|---|---|
+| Images, video, doc answers | **Qwen3-VL 8B Instruct** (`qwen3-vl:8b-instruct`, Ollama) | Strongest open-weight VLM that fits next to everything else in 24 GB; reads text in photos well and handles multi-image input for video. We use the *instruct* build: the plain `qwen3-vl:8b` tag is the thinking variant, which ignores `think=false` and was 2–3× slower (and miscounted more) in our tests. One model also serves text Q&A, so no second LLM sits in memory. |
+| Code | **Qwen2.5-Coder 7B** (Ollama) | Best open coding model at this size; fits the RTX 3060's 6 GB at Q4 and also runs on the M5 as fallback. |
+| Speech | **Whisper large-v3-turbo** | Near large-v3 accuracy at a fraction of the decode cost. faster-whisper on CUDA on WIN; **mlx-whisper** on the M5 (faster-whisper cannot use the Mac GPU). |
+| Sound events | **AST** fine-tuned on AudioSet (`MIT/ast-finetuned-audioset-10-10-0.4593`) | 527 everyday sound classes (alarms, beeps, glass, liquid, speech); small enough for CPU. Scored with sigmoid, since AudioSet is multi-label. |
+| Retrieval | **nomic-embed-text** + Chroma | Small, fast, good retrieval quality; uses the `search_document:` / `search_query:` prefixes it was trained with. |
+| Colony counts | **OpenCV** (adaptive threshold + contour area/circularity) | VLMs are unreliable counters; a deterministic count is shown next to the VLM estimate. |
+
+No cloud API is used anywhere, not even as a fallback. Hugging Face and Chroma telemetry are
+forced offline at import (`backend/config.py`).
+
+## Setup
+
+You need internet once, to install packages and download models. After that, everything runs
+with Wi-Fi off.
+
+### M5 (macOS)
+
+```bash
+# Python 3.11 environment
+python3.11 -m venv .venv
+.venv/bin/pip install -r requirements.lock.txt
+
+# Models (once, while online)
+ollama pull qwen3-vl:8b-instruct
+ollama pull qwen2.5-coder:7b
+ollama pull nomic-embed-text
+.venv/bin/python scripts/prefetch_models.py   # mlx Whisper + AST into the HF cache
+
+# Code sandbox: a separate venv with numpy/pandas/matplotlib and a network guard
+./scripts/setup_sandbox.sh
+
+# Frontend
+cd frontend && npm install && cd ..
+```
+
+Run it (three terminals):
+
+```bash
+OLLAMA_HOST=0.0.0.0 OLLAMA_KEEP_ALIVE=-1 OLLAMA_MAX_LOADED_MODELS=3 ollama serve
+.venv/bin/uvicorn backend.main:app --host 0.0.0.0 --port 8000
+cd frontend && npm run dev -- --host
+```
+
+Open `http://localhost:5173` on the laptop, or `http://<M5-IP>:5173` on a phone on the same
+network. (Alternatively, `npm run build` and the API serves the built app at `http://<M5-IP>:8000`.)
+
+### WIN (Windows)
+
+See `backend/services/win/README.md`. In short: run `setup.bat` once while online, then
+`start_ollama.bat` and `run.bat`. In `run.bat`, set `RUN_CODE_CLIENTS` to the M5's IP so the
+sandbox accepts its requests, and open ports 8001 and 11434 in the Windows firewall
+(`open_firewall.bat`).
+
+### Connect the two
+
+Give both laptops fixed IPs on your own router or a phone hotspot (venue Wi-Fi usually blocks
+laptop-to-laptop traffic), then put the Windows IP in `backend/config.yaml`:
+
+```yaml
+nodes:
+  win: {ollama: http://192.168.8.20:11434, service: http://192.168.8.20:8001}
+```
+
+## How fallback works
+
+`backend/config.yaml` `routing` says which node serves each job (`vision`, `docs` → M5;
+`coder`, `audio`, `sandbox` → WIN). A background loop checks every node every 5 s (Ollama
+`/api/tags`, WIN service `/health`). When a job's node is up, the request goes there; if it is
+down, or the call errors or times out mid-request, the job runs on the M5 instead and is
+marked as a fallback in the entry and in the status panel. A WIN failure never fails a
+capture. While `WIN_IP` is left as the placeholder, everything runs on the M5.
+
+## API
+
+| Method | Path | |
+|---|---|---|
+| POST | `/entry` | multipart: `file?`, `text?`, `question?`, `experiment_id`, `follow_up_of?` → entry (contract in `CLAUDE.md`). `follow_up_of` = id of a photo/video entry to ask another question about. |
+| GET | `/entries` | `?experiment_id=&date=YYYY-MM-DD` |
+| GET | `/verify` | hash-chain check, first broken entry |
+| GET | `/status` | node health, which node serves each job, models |
+| GET | `/export` | `?date=&experiment_id=` → Markdown lab log with hashes |
+| POST/GET | `/protocols` | upload a PDF/TXT to index / list indexed protocols |
+| GET/POST | `/experiments` | list / create |
+| GET | `/media/...` | captured files, frames, plots |
+
+Every route is also available under `/api/...` (used by the frontend).
+
+## Eval
+
+`python eval/run_eval.py --pack data/practice-pack --out eval/results.md` runs all 100
+practice-pack items through the real pipelines on the M5 alone. Full table:
+[`eval/results.md`](eval/results.md).
+
+Latest run (100 items, 24 min, single-machine mode: every job on the M5):
+
+| Modality | Metric | Result |
+|---|---|---|
+| Image | Counting accuracy | 93% (14/15) |
+| Image | Identification accuracy | 100% (10/10) |
+| Audio | Word error rate, transcription | 2.1% |
+| Audio | Speech Q&A accuracy | 80% (4/5) |
+| Audio | Sound identification | 80% (8/10); correct sound in AST top-3: 90% |
+| Text | Answerable questions correct | 93% (14/15) |
+| Text | Unanswerable questions correctly refused | **100% (5/5)**, with 0 false refusals |
+| Code | Hidden unit tests passed | 90% (18/20); all 20 generated programs ran |
+| Video | Question accuracy | 67% (10/15) |
+
+Mean latency on the M5: image 9.6 s, audio 5.4 s, text 7.0 s, code 22.9 s, video 34.6 s.
+Scoring is automatic and deliberately strict: one of the audio misses ("His country home was in
+Essex" for "An old family place in Essex") is a correct answer that the word-overlap check
+rejects. Video misses are fine-motion and counting clips (bounces, shapes appearing and
+disappearing).
+
+## Tests
+
+```bash
+.venv/bin/python -m pytest            # 54 tests; model tests skip if Ollama or the pack is missing
+```
+
+Per-pipeline scripts for trying one file: `scripts/run_vision.py`, `run_audio.py`,
+`run_video.py`, `run_docs.py`, `run_code.py` (each logs latency and the node that served it).
+
+## Known limits
+
+- **VLM counting.** Qwen3-VL miscounts crowded scenes (e.g. 3 zebras for 4). The UI always labels
+  VLM counts as estimates; plates get the OpenCV count alongside. The OpenCV counter is tuned
+  for separated round colonies; touching or confluent colonies are under-counted.
+- **Video speed.** Ollama resizes every image to a fixed ~1k tokens, and on the M5 the VLM
+  prefills about 100 tokens/s, so each image costs about 10 s. Sending 10 frames separately took
+  about 2 minutes, so frames are tiled in order into two labelled contact sheets
+  (`video.mode: sheets`), about 35–40 s per clip. Set `video.mode: frames` for one image per frame.
+  Fine motion (counting bounces) is the weakest video case.
+- **Sandbox isolation.** Generated code runs in a separate venv, in a temp directory, with a
+  20 s timeout, a minimal environment, a Python-level socket block, and on macOS `sandbox-exec`
+  with all network denied. It is not a hardened jail: code can still read files the user can read.
+  Fine for the lab's own analysis code; not a boundary against deliberately hostile code.
+- **Air thermals.** The MacBook Air is fanless and throttles under sustained load (long eval runs,
+  back-to-back videos). Keep the WIN node connected for audio and code to spread the load.
+- **Phone voice notes.** Browsers only allow in-page recording on `https` or `localhost`. Over
+  `http://<M5-IP>` the voice button opens the phone's own recorder instead (works on Android;
+  on iOS, use the file button with a Voice Memos recording).
+- **Doc refusals.** Besides the similarity threshold and the model's `NOT_IN_PROTOCOLS`, answers
+  are refused when a number in the question or answer does not appear in the retrieved excerpts.
+  That catches altered-detail questions (a wrong year or count) but not every unanswerable question.

@@ -128,7 +128,7 @@ check `GET http://<M5-IP>:8000/status`: every WIN job should show `"serving": "W
 ## API contract (frozen — frontend depends on it)
 
 `POST /entry` (multipart: optional `file`, optional `text`, optional `question`,
-`experiment_id`) returns:
+`experiment_id`, optional `follow_up_of`) returns:
 
 ```json
 {
@@ -159,7 +159,9 @@ renaming or removing keys is not.
 
 ## Pipeline requirements
 
-- **Image:** describe the image, answer follow-ups. For colony counts, run the OpenCV
+- **Image:** describe the image, answer follow-ups (`follow_up_of` = a photo or video entry id;
+  the stored media plus the thread's earlier Q&A go back to the VLM; the new entry records
+  `follow_up_of`, `thread_root` and `history` in `details`). For colony counts, run the OpenCV
   blob count alongside the VLM and return both. Never present a VLM count alone as exact.
 - **Audio:** Whisper transcript plus top-3 AST labels with confidence (sigmoid scores on both
   nodes). Only surface sound events with confidence ≥ 0.5 in the summary.
