@@ -25,6 +25,94 @@ Everything runs on laptops the lab already owns. Nothing leaves the local networ
 - Never commit the practice pack or anything from it (files or answers): its license forbids
   it. `data/`, `*.zip` and `eval/raw/` are gitignored; keep it that way.
 
+## Open handoff: WIN → M5 (delete this section once every item is done)
+
+Written from the WIN laptop on Nov 19. **If you are on the M5 (macOS), items 1–4 are yours.**
+The WIN side cannot do them: they change files the M5 owns, or have to run on the Mac. Work
+through them in order without waiting for the WIN side; where a person is needed, it says so.
+If you are on WIN, only item 5 concerns you.
+
+**Where the WIN node stands.** The service runs and passes `check_node.py` 16/16 over its LAN
+address. Whisper is on the GPU: 0.7 s for a 10 s clip, against 5.4 s mean per audio item on the
+M5 in `eval/results.md`. Nothing on WIN is tied to an IP address, so it needs no edits on a new
+network. Not done: nothing has been called from the Mac yet, and the Windows firewall rules are
+still missing (item 5), so the M5 cannot reach WIN until a person adds them.
+
+1. **Move the coder to the M5.** In `backend/config.yaml` set `routing.coder: m5`, and commit.
+   Why: the RTX 3060 has 6 GB. Whisper holds 2.3 GB and Qwen2.5-Coder 7B needs 6.5 GB at
+   `num_ctx` 16384 (4.7 GB of weights alone). Measured on WIN: with both loaded, Ollama keeps
+   48% of the coder on the GPU and it runs at 12.5 tok/s after a 50 s cold load; alone it
+   reaches 26.3 tok/s, but Whisper on the CPU then takes 19 s for a 10 s clip. Audio is the
+   job that GPU is good at. Keep `audio: win` and `sandbox: win`. Nothing changes while WIN
+   is unconfigured, so the tests and the eval numbers are unaffected.
+
+2. **Make the docs say the same thing, in that commit.** The Nodes table and architecture
+   notes in this file; the Hardware and "Models and why" tables in `README.md` (the coder row
+   says it fits the 3060's 6 GB, which only holds with nothing else loaded); the WIN paragraph
+   in `README.md` (no Ollama needed there); `docs/win-service-contract.md` (drop "plus Ollama
+   on 11434 serving qwen2.5-coder:7b" and the Ollama and port-11434 notes); and the slides if
+   they say where the coder runs. The WIN side agrees to that contract change, so you do not
+   need to ask for it. The four endpoints do not change.
+
+3. **Find and check the WIN laptop** once both laptops are on the same network (own router or
+   phone hotspot, not venue Wi-Fi). You can find its address yourself:
+
+   ```bash
+   dscacheutil -q host -a name laptop-8k7cobtd.local   # every address WIN answers with
+   ipconfig getifaddr en0                               # this Mac's address
+   ```
+
+   Use the WIN address on the Mac's own subnet; WIN also has VM and VPN adapters, ignore
+   those. If the name does not resolve, the network blocks mDNS: ask the user for the address
+   that `net_info.bat` shows on the Windows laptop. Check it before changing anything:
+
+   ```bash
+   curl -s --max-time 3 http://<WIN-ADDR>:8001/health
+   ```
+
+   A good answer has `"ok": true`, `speech.device` `"cuda"` and `sandbox.allowed_clients`
+   `["lan"]`. No answer means the firewall rules are missing (item 5) or the network blocks
+   laptop-to-laptop traffic. `"cpu"` means something took the GPU before the service started:
+   ask the user to run `stop.bat` and then `run.bat` on WIN.
+
+4. **Use it, then prove it.** First without editing anything:
+
+   ```bash
+   .venv/bin/python scripts/run_audio.py data/practice-pack/audio/p_aud_001.wav --win http://<WIN-ADDR>
+   .venv/bin/python scripts/run_code.py "Plot y = x^2 for x in 0..10 and print the max" --win http://<WIN-ADDR>
+   ```
+
+   The audio result should show node `WIN`, and the code result `sandbox_node` `WIN` with the
+   coder on `M5`. Then give the orchestrator the address without touching the tracked config
+   (the tests and eval need `WIN_IP` to stay in `backend/config.yaml`, and the address changes
+   with the network, so it must never be committed):
+
+   ```bash
+   cp backend/config.yaml data/config.local.yaml    # data/ is gitignored
+   # in data/config.local.yaml set   nodes.win.service: http://<WIN-ADDR>:8001
+   # and leave nodes.win.ollama as http://WIN_IP:11434 (nothing routes there any more)
+   BENCHLOG_CONFIG=data/config.local.yaml .venv/bin/uvicorn backend.main:app --host 0.0.0.0 --port 8000
+   curl -s http://localhost:8000/status             # audio and sandbox: "serving": "WIN"
+   ```
+
+   Re-copy the file whenever `backend/config.yaml` changes. Then check the fallback: ask the
+   user to run `stop.bat` on WIN, capture a voice note, and confirm the entry comes back from
+   the M5 marked as a fallback; then `run.bat` again. If there is time, rerun the eval with WIN
+   connected so the latency table in `eval/results.md` shows audio served by WIN (slide
+   material; optional). **At the demo venue the address is different: repeat items 3 and 4
+   there.** It takes a minute.
+
+5. **A person, on the Windows laptop, once:** right-click
+   `backend\services\win\open_firewall.bat` and choose "Run as administrator". Neither Claude
+   can do this (it needs an administrator prompt). `net_info.bat` shows whether it is done.
+
+**Demo-day order.** WIN first: join the network, `run.bat` (before anything else can take the
+GPU), then `net_info.bat`, which should end with "Nothing left to do on this laptop." Ollama
+is not needed on WIN. Then the M5: items 3 and 4 with the new address, and check `/status`.
+
+From the M5, do not edit anything under `backend/services/win/`. If something there looks
+wrong, tell the user what and why; it gets fixed from the WIN laptop.
+
 ## Architecture
 
 ```
@@ -51,7 +139,8 @@ Changing the other node's code, or the WIN service contract (`docs/win-service-c
 needs both sides: say so to the user instead of silently editing across the boundary.
 
 Node URLs live in `backend/config.yaml` (`nodes.win` holds `WIN_IP` until the Windows laptop's
-fixed IP is filled in; while it is the placeholder, every job runs on the M5). The orchestrator
+name or IP is filled in; while it is the placeholder, every job runs on the M5, and the M5
+tests and eval rely on that). The orchestrator
 health-checks every node every 5 s; if a node is down, or a call to it fails or times out, the
 job reruns on the M5. The full stack fits on the M5 alone (~16 GB with every model loaded), so
 single-machine mode must always work. **Build and test on the M5 first; distribute last.**
@@ -110,20 +199,31 @@ cd frontend && npm run dev -- --host            # phone: http://<M5-IP>:5173
 
 ```bat
 setup.bat            :: one-time (online): .venv, sandbox_venv, model downloads
-open_firewall.bat    :: allow TCP 8001 and 11434 on the private network
-start_ollama.bat     :: Ollama on 0.0.0.0:11434 serving qwen2.5-coder:7b
-run.bat              :: WIN service on :8001; set RUN_CODE_CLIENTS to the M5's IP in this file
+open_firewall.bat    :: once, as administrator: allow TCP 8001 and 11434 from the local subnet
+start_ollama.bat     :: optional: Ollama on 0.0.0.0:11434 (only if the coder is routed to WIN)
+run.bat              :: WIN service on :8001 (sets RUN_CODE_CLIENTS=lan)
+net_info.bat         :: this laptop's name/IP on the current network, checks, the address for the M5
 .venv\Scripts\python.exe check_node.py   :: smoke test; writes test_results.md
 ```
 
-`/run_code` only answers clients listed in `RUN_CODE_CLIENTS` (loopback by default). If the
-M5's IP is missing there, code requests get 403 and every code job silently falls back to the M5.
+`/run_code` only answers clients allowed by `RUN_CODE_CLIENTS`: IPs, `lan` (private addresses
+on the same /24 as the WIN laptop; what `run.bat` sets) or `*`. A client that is not allowed
+gets 403 and its code jobs silently fall back to the M5.
 
-### Connecting the two
+### Connecting the two (and moving to another network)
 
-Own router or phone hotspot, fixed IPs. Put the WIN IP in `backend/config.yaml`
-(`nodes.win.ollama` and `nodes.win.service`), the M5 IP in `run.bat` (`RUN_CODE_CLIENTS`), then
-check `GET http://<M5-IP>:8000/status`: every WIN job should show `"serving": "WIN"`.
+Own router or phone hotspot, never venue Wi-Fi. Nothing on the WIN laptop is tied to an IP, so
+it needs no edits on a new network; run `net_info.bat` there to check it. The M5 needs the WIN
+address in `nodes.win.service`. Put it in a local copy of the config, not in the tracked file
+(the tests and eval expect the `WIN_IP` placeholder there, and the address changes with the
+network): `cp backend/config.yaml data/config.local.yaml`, edit the copy, and start the
+orchestrator with `BENCHLOG_CONFIG=data/config.local.yaml`. Then
+`GET http://<M5-IP>:8000/status` should show `"serving": "WIN"` for audio and sandbox.
+
+The address is either what `net_info.bat` prints (always works) or the WIN laptop's mDNS name,
+`laptop-8k7cobtd.local` (the same on every network, but only where mDNS passes between
+devices). With a name that does not resolve, each health probe waits on DNS for several
+seconds instead of the 2 s connect timeout, so prefer the address when WIN may be absent.
 
 ## API contract (frozen — frontend depends on it)
 
@@ -206,6 +306,10 @@ renaming or removing keys is not.
   `check_node.py`'s speech tests need Windows text-to-speech and are skipped elsewhere.
 - The MacBook Air is fanless and throttles under sustained load (long evals, back-to-back videos).
 - Windows firewall must allow ports 8001 and 11434 for the LAN.
+- The RTX 3060's 6 GB cannot hold Whisper and Qwen2.5-Coder 7B together at `num_ctx` 16384.
+  Measured on WIN: with both loaded the coder runs 48% on the GPU at 12.5 tok/s (50 s cold
+  load); alone it reaches 26 tok/s, but Whisper on the CPU then takes 19 s for a 10 s clip.
+  So the coder belongs on the M5 (`routing.coder: m5`) and WIN keeps audio and the sandbox.
 - Don't use venue Wi-Fi (client isolation). Use our own router, switch, or a phone hotspot,
   with fixed IPs.
 - VLMs are unreliable at counting; that's why the OpenCV count exists.

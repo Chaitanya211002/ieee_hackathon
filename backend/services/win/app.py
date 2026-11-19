@@ -20,6 +20,7 @@ from __future__ import annotations
 import base64
 import binascii
 import io
+import ipaddress
 import logging
 import os
 import re
@@ -68,10 +69,12 @@ WINDOW_S, HOP_S = 10.0, 5.0  # AST was trained on 10-second clips
 LABEL_FLOOR = 0.10  # a label counts as present in a window above this score
 EVENT_FLOOR = 0.20  # a lab event is reported above this score
 
-# /run_code executes whatever it is sent, so it only answers these client IPs.
-# Loopback only by default; set RUN_CODE_CLIENTS to the M5's IP (or * for any).
+# /run_code executes whatever it is sent, so it only answers these clients. Entries are
+# IPs, "lan" (any private address on the same /24 as the address the request arrived on,
+# so nothing has to be edited when the laptops move to another network) or "*" (anyone).
+# Loopback only when unset; run.bat sets "lan".
 RUN_CODE_CLIENTS = {
-    c.strip() for c in os.environ.get("RUN_CODE_CLIENTS", "127.0.0.1,::1").split(",") if c.strip()
+    c.strip().lower() for c in os.environ.get("RUN_CODE_CLIENTS", "127.0.0.1,::1").split(",") if c.strip()
 }
 _SCRIPTS = "Scripts" if os.name == "nt" else "bin"
 _PY = "python.exe" if os.name == "nt" else "python"
@@ -281,9 +284,7 @@ def read_upload(upload: UploadFile) -> np.ndarray:
     try:
         audio = decode_audio(io.BytesIO(data), sampling_rate=SAMPLE_RATE)
     except Exception as exc:  # noqa: BLE001
-        raise HTTPException(
-            status_code=415, detail=f"Could not decode audio from this file: {exc}"
-        ) from exc
+        raise HTTPException(status_code=415, detail=f"Could not decode audio from this file: {exc}") from exc
     audio = np.asarray(audio, dtype=np.float32)
     if audio.size == 0:
         raise HTTPException(status_code=422, detail="No audio track found in this file")
@@ -305,12 +306,8 @@ def window_starts(n_samples: int) -> list[int]:
 def map_lab_events(label_scores: dict[str, float], first_seen: dict[str, float]) -> list[dict]:
     events = []
     for spec in LAB_EVENTS:
-        pattern = re.compile(
-            r"\b(" + "|".join(re.escape(k) for k in spec["keywords"]) + r")\b", re.IGNORECASE
-        )
-        hits = {
-            lab: sc for lab, sc in label_scores.items() if sc >= LABEL_FLOOR and pattern.search(lab)
-        }
+        pattern = re.compile(r"\b(" + "|".join(re.escape(k) for k in spec["keywords"]) + r")\b", re.IGNORECASE)
+        hits = {lab: sc for lab, sc in label_scores.items() if sc >= LABEL_FLOOR and pattern.search(lab)}
         if not hits or max(hits.values()) < EVENT_FLOOR:
             continue
         evidence = sorted(hits, key=hits.get, reverse=True)[:4]
@@ -340,9 +337,7 @@ def classify_audio(audio: np.ndarray, top_k: int) -> dict:
     batches = []
     with _sound_lock, torch.inference_mode():
         for i in range(0, len(chunks), 8):
-            inputs = sound["extractor"](
-                chunks[i : i + 8], sampling_rate=SAMPLE_RATE, return_tensors="pt"
-            )
+            inputs = sound["extractor"](chunks[i : i + 8], sampling_rate=SAMPLE_RATE, return_tensors="pt")
             logits = sound["model"](**inputs).logits
             batches.append(torch.sigmoid(logits).cpu().numpy())  # AudioSet is multi-label
     probs = np.concatenate(batches, axis=0)
@@ -420,6 +415,23 @@ class RunCodeRequest(BaseModel):
     files: dict[str, str] = Field(default_factory=dict)  # name -> base64
 
 
+def client_allowed(client: str, server: str) -> bool:
+    """May `client` call /run_code? `server` is the local address the request arrived on."""
+    if "*" in RUN_CODE_CLIENTS or client.lower() in RUN_CODE_CLIENTS:
+        return True
+    if "lan" not in RUN_CODE_CLIENTS:
+        return False
+    try:
+        c, srv = ipaddress.ip_address(client), ipaddress.ip_address(server)
+    except ValueError:
+        return False
+    if c.is_loopback:
+        return True
+    if c.version != 4 or srv.version != 4 or not c.is_private or not srv.is_private:
+        return False
+    return c in ipaddress.ip_network(f"{srv}/24", strict=False)
+
+
 def _sandbox_env(tmp: Path) -> dict[str, str]:
     """A minimal environment: nothing inherited except what Windows needs to start Python."""
     env = {
@@ -454,18 +466,14 @@ def _sandbox_env(tmp: Path) -> dict[str, str]:
             env[key] = os.environ[key]
     system_root = os.environ.get("SYSTEMROOT", r"C:\Windows")
     env["PATH"] = (
-        os.pathsep.join([str(Path(system_root) / "System32"), system_root])
-        if os.name == "nt"
-        else "/usr/bin:/bin"
+        os.pathsep.join([str(Path(system_root) / "System32"), system_root]) if os.name == "nt" else "/usr/bin:/bin"
     )
     return env
 
 
 def _kill_tree(proc: subprocess.Popen) -> None:
     if os.name == "nt":
-        subprocess.run(
-            ["taskkill", "/PID", str(proc.pid), "/T", "/F"], capture_output=True, check=False
-        )
+        subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"], capture_output=True, check=False)
     else:  # pragma: no cover - the service targets Windows
         import signal
 
@@ -501,9 +509,7 @@ def run_sandboxed(code: str, files: dict[str, str]) -> dict:
         (tmp / "main.py").write_text(code, encoding="utf-8")
 
         kwargs: dict = (
-            {"creationflags": subprocess.CREATE_NO_WINDOW}
-            if os.name == "nt"
-            else {"start_new_session": True}
+            {"creationflags": subprocess.CREATE_NO_WINDOW} if os.name == "nt" else {"start_new_session": True}
         )
         proc = subprocess.Popen(
             # -I: isolated mode, ignores PYTHON* variables and the user site directory.
@@ -645,7 +651,8 @@ def classify_sound(file: UploadFile = File(...), top_k: int = Form(default=3)) -
 def run_code(body: RunCodeRequest, request: Request) -> dict:
     """-> {"stdout", "stderr", "exit_code", "artifacts": {name: base64 png}}"""
     client = request.client.host if request.client else ""
-    if "*" not in RUN_CODE_CLIENTS and client not in RUN_CODE_CLIENTS:
+    server = (request.scope.get("server") or ("", 0))[0]
+    if not client_allowed(client, server):
         raise HTTPException(
             status_code=403,
             detail=f"/run_code is not enabled for {client}. Add it to RUN_CODE_CLIENTS in run.bat.",

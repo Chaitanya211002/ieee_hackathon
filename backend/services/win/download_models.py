@@ -31,9 +31,7 @@ def main() -> None:
 
     print(f"Downloading {sound} ...", flush=True)
     # Only the safetensors weights: the repo also carries a duplicate .bin file.
-    path = snapshot_download(
-        sound, allow_patterns=["config.json", "preprocessor_config.json", "model.safetensors"]
-    )
+    path = snapshot_download(sound, allow_patterns=["config.json", "preprocessor_config.json", "model.safetensors"])
     print("  ->", path, flush=True)
     print("Models ready.")
 
