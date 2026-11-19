@@ -131,6 +131,8 @@ Add new fields inside `details`; never rename top-level keys.
   work at phone width (~390 px).
 - Commit small and often, with clear messages. Push to the IEEE GitHub repo frequently;
   the code deadline is hard.
+- Commit messages: plain descriptive messages only. Never add Co-Authored-By trailers,
+  "Generated with Claude Code" lines, or session links.
 
 ## Known gotchas
 
