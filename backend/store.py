@@ -90,12 +90,15 @@ class Store:
         return self.ensure_experiment(uuid.uuid4().hex[:12], name)
 
     def list_experiments(self) -> list[dict[str, Any]]:
+        """Experiments with `entry_count` = entries still shown in the notebook (deleted ones excluded)."""
+        gone = self.deleted_ids()
         with self._conn() as c:
-            rows = c.execute(
-                "SELECT e.*, (SELECT COUNT(*) FROM entries n WHERE n.experiment_id = e.id) AS entry_count "
-                "FROM experiments e ORDER BY e.created_at"
-            ).fetchall()
-        return [dict(r) for r in rows]
+            rows = c.execute("SELECT * FROM experiments ORDER BY created_at").fetchall()
+            counts: dict[str, int] = {}
+            for r in c.execute("SELECT id, experiment_id FROM entries"):
+                if r["id"] not in gone:
+                    counts[r["experiment_id"]] = counts.get(r["experiment_id"], 0) + 1
+        return [{**dict(r), "entry_count": counts.get(r["id"], 0)} for r in rows]
 
     # ---------- media ----------
     def save_media(self, src: str | Path | bytes, filename: str) -> str:
@@ -149,9 +152,16 @@ class Store:
                 "INSERT INTO entries (id, experiment_id, type, created_at, summary, details, artifacts, node, "
                 "prev_hash, hash) VALUES (?,?,?,?,?,?,?,?,?,?)",
                 (
-                    entry["id"], entry["experiment_id"], entry["type"], entry["created_at"], entry["summary"],
-                    canonical_json(entry["details"]), canonical_json(entry["artifacts"]), entry["node"],
-                    entry["prev_hash"], entry["hash"],
+                    entry["id"],
+                    entry["experiment_id"],
+                    entry["type"],
+                    entry["created_at"],
+                    entry["summary"],
+                    canonical_json(entry["details"]),
+                    canonical_json(entry["artifacts"]),
+                    entry["node"],
+                    entry["prev_hash"],
+                    entry["hash"],
                 ),
             )
             c.execute("COMMIT")
@@ -175,8 +185,13 @@ class Store:
             row = c.execute("SELECT * FROM entries WHERE id = ?", (entry_id,)).fetchone()
         return self._row_to_entry(row) if row else None
 
-    def list_entries(self, experiment_id: str | None = None, date: str | None = None) -> list[dict[str, Any]]:
-        """Entries in chain order. `date` is YYYY-MM-DD in the lab's local time."""
+    def list_entries(
+        self, experiment_id: str | None = None, date: str | None = None, include_deleted: bool = False
+    ) -> list[dict[str, Any]]:
+        """Entries in chain order. `date` is YYYY-MM-DD in the lab's local time.
+
+        Deleted entries are left out unless `include_deleted`; their deletion records are listed.
+        """
         sql, args = "SELECT * FROM entries WHERE 1=1", []
         if experiment_id:
             sql += " AND experiment_id = ?"
@@ -186,7 +201,58 @@ class Store:
             args.append(date)
         with self._conn() as c:
             rows = c.execute(sql + " ORDER BY seq", args).fetchall()
-        return [self._row_to_entry(r) for r in rows]
+        gone = set() if include_deleted else self.deleted_ids()
+        return [self._row_to_entry(r) for r in rows if r["id"] not in gone]
+
+    # ---------- deletion ----------
+    # Deleting never removes a row: that would break every hash after it, and a notebook that can
+    # lose entries silently is not tamper-evident. Instead a deletion is itself a chained entry
+    # (a note with details.kind == "deletion") naming what it removed. The listing hides the named
+    # entries, the chain still verifies, and the fact that something was deleted stays on record.
+    def deleted_ids(self) -> set[str]:
+        """Ids of the entries that deletion records have taken out of the notebook."""
+        with self._conn() as c:
+            rows = c.execute(
+                "SELECT details FROM entries WHERE type = 'note' AND details LIKE ?", ('%"kind":"deletion"%',)
+            ).fetchall()
+        gone: set[str] = set()
+        for r in rows:
+            d = json.loads(r["details"])
+            if d.get("kind") == "deletion":
+                gone.update(x["id"] for x in d.get("deleted", []))
+        return gone
+
+    def delete_entry(self, entry_id: str) -> dict[str, Any]:
+        """Take an entry, and any follow-ups asked about it, out of the notebook.
+
+        Appends a deletion record and returns it (API-contract shape). Raises KeyError when the
+        entry does not exist or is already deleted, ValueError for a deletion record itself.
+        """
+        target = self.get_entry(entry_id)
+        if target is None or entry_id in self.deleted_ids():
+            raise KeyError(entry_id)
+        if target["details"].get("kind") == "deletion":
+            raise ValueError("a deletion record cannot be deleted")
+        thread = [target] + [
+            e for e in self.list_entries(target["experiment_id"]) if e["details"].get("thread_root") == entry_id
+        ]
+        label = target["type"].replace("_", " ")
+        text = f"Deleted a {label} entry from {target['created_at'][11:16]}"
+        if len(thread) > 1:
+            text += f" and its {len(thread) - 1} follow-up{'s' if len(thread) > 2 else ''}"
+        return self.add_entry(
+            type="note",
+            summary=text,
+            details={
+                "kind": "deletion",
+                "text": text,
+                "deleted": [
+                    {"id": e["id"], "type": e["type"], "created_at": e["created_at"], "hash": e["hash"]} for e in thread
+                ],
+            },
+            node="M5",
+            experiment_id=target["experiment_id"],
+        )
 
     # ---------- verification ----------
     def verify_report(self) -> dict[str, Any]:

@@ -19,11 +19,21 @@ export default function VoiceCard({ entry }: { entry: Entry }) {
       <Question q={d.question} />
       {d.answer && d.answer !== d.transcript && <p className="font-medium">{d.answer}</p>}
       {d.media?.path && <audio controls src={d.media.path} className="h-9 w-full" />}
-      {d.transcript ? (
-        <blockquote className="border-l-2 border-violet-300 pl-2 text-slate-700">{d.transcript}</blockquote>
-      ) : (
-        <p className="text-slate-500 italic">No speech detected.</p>
-      )}
+      <div>
+        <p className="text-[11px] font-semibold tracking-wider text-slate-500 uppercase">Transcript</p>
+        {d.transcript ? (
+          <blockquote className="border-l-2 border-violet-300 pl-2 text-slate-700">{d.transcript}</blockquote>
+        ) : d.unconfirmed_transcript ? (
+          <blockquote className="border-l-2 border-amber-300 pl-2 text-slate-600">
+            {d.unconfirmed_transcript}
+            <span className="block text-[11px] text-amber-700">
+              Low confidence: the recording was short or unclear, so this text is not used for answers.
+            </span>
+          </blockquote>
+        ) : (
+          <p className="text-slate-500 italic">No speech detected in this recording.</p>
+        )}
+      </div>
       {labels.length > 0 && (
         <p className="text-xs text-slate-500">
           Sound labels: {labels.map((l) => `${l.label} ${l.score.toFixed(2)}`).join(" · ")}

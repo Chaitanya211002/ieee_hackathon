@@ -1,5 +1,47 @@
-import { useState, type ReactNode } from "react";
+import { createContext, useContext, useState, type ReactNode } from "react";
 import type { Entry } from "../../types";
+
+/** Set by App: deletes an entry (and its follow-ups). Absent: cards show no Delete button. */
+export const DeleteContext = createContext<((entry: Entry) => Promise<void>) | null>(null);
+
+/**
+ * Delete with a second click to confirm, in the page rather than a browser dialog. The entry
+ * leaves the notebook; a deletion record takes its place in the hash chain.
+ */
+function DeleteButton({ entry }: { entry: Entry }) {
+  const onDelete = useContext(DeleteContext);
+  const [state, setState] = useState<"idle" | "confirm" | "busy">("idle");
+  if (!onDelete || entry.details?.kind === "deletion") return null;
+  if (state === "idle") {
+    return (
+      <button
+        className="rounded px-1.5 py-0.5 text-[11px] text-slate-400 hover:bg-red-50 hover:text-red-700"
+        title="Delete this entry"
+        onClick={() => setState("confirm")}
+      >
+        Delete
+      </button>
+    );
+  }
+  return (
+    <span className="flex items-center gap-1 text-[11px]">
+      <span className="text-red-700">Delete this entry?</span>
+      <button
+        className="rounded bg-red-600 px-1.5 py-0.5 font-semibold text-white disabled:opacity-50"
+        disabled={state === "busy"}
+        onClick={() => {
+          setState("busy");
+          onDelete(entry).catch(() => setState("idle"));
+        }}
+      >
+        {state === "busy" ? "Deleting…" : "Yes, delete"}
+      </button>
+      <button className="rounded px-1.5 py-0.5 text-slate-600 hover:bg-slate-100" onClick={() => setState("idle")}>
+        Cancel
+      </button>
+    </span>
+  );
+}
 
 const TYPE_STYLE: Record<string, { label: string; icon: string; tint: string }> = {
   voice: { label: "Voice", icon: "🎙️", tint: "bg-violet-100 text-violet-800" },
@@ -28,6 +70,7 @@ export default function CardShell({ entry, children }: { entry: Entry; children:
         <span className="text-slate-500">{time}</span>
         {latency != null && <span className="text-slate-400">{latency}s</span>}
         <span className="ml-auto flex items-center gap-2">
+          <DeleteButton entry={entry} />
           <NodeBadge node={entry.node} />
           <code className="text-[10px] text-slate-400" title={`hash ${entry.hash}\nprev ${entry.prev_hash}`}>
             #{entry.hash.slice(0, 8)}

@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { reportError } from "../api";
+import { api, reportError } from "../api";
 
 interface Props {
   busy: boolean;
@@ -13,12 +13,16 @@ const canRecord = typeof window !== "undefined" && window.isSecureContext && !!n
 export default function CaptureBar({ busy, onSend }: Props) {
   const [file, setFile] = useState<File | null>(null);
   const [text, setText] = useState("");
-  const [recording, setRecording] = useState(false);
+  // "voice" records a voice-note entry (the audio is kept). "dictate" records only to turn the
+  // speech into text in the box below, so a note can be spoken instead of typed.
+  const [recording, setRecording] = useState<null | "voice" | "dictate">(null);
+  const [transcribing, setTranscribing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const recorder = useRef<MediaRecorder | null>(null);
   const photoIn = useRef<HTMLInputElement>(null);
   const videoIn = useRef<HTMLInputElement>(null);
   const audioIn = useRef<HTMLInputElement>(null);
+  const dictIn = useRef<HTMLInputElement>(null);
   const fileIn = useRef<HTMLInputElement>(null);
 
   const pick = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -27,10 +31,25 @@ export default function CaptureBar({ busy, onSend }: Props) {
     e.target.value = "";
   };
 
-  const toggleRecord = async () => {
+  /** Speech to text: the words land in the text box, where they can be edited before sending. */
+  const dictate = async (f: File) => {
+    setTranscribing(true);
+    try {
+      const heard = (await api.transcribe(f)).text.trim();
+      if (heard) setText((t) => (t.trim() ? `${t.trim()} ${heard}` : heard));
+      else setError("No speech was picked up. Try again, a little closer to the microphone.");
+    } catch (e) {
+      setError(`Could not turn that into text: ${(e as Error).message}`);
+      reportError("dictate", e);
+    } finally {
+      setTranscribing(false);
+    }
+  };
+
+  const toggleRecord = async (mode: "voice" | "dictate") => {
     setError(null);
     if (!canRecord) {
-      audioIn.current?.click();
+      (mode === "voice" ? audioIn : dictIn).current?.click();
       return;
     }
     if (recording) {
@@ -45,13 +64,15 @@ export default function CaptureBar({ busy, onSend }: Props) {
       rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
       rec.onstop = () => {
         stream.getTracks().forEach((t) => t.stop());
-        setRecording(false);
+        setRecording(null);
         const ext = mime.includes("webm") ? "webm" : "m4a";
-        setFile(new File(chunks, `voice-note.${ext}`, { type: mime }));
+        const f = new File(chunks, `${mode === "voice" ? "voice-note" : "dictation"}.${ext}`, { type: mime });
+        if (mode === "voice") setFile(f);
+        else void dictate(f);
       };
       recorder.current = rec;
       rec.start();
-      setRecording(true);
+      setRecording(mode);
     } catch (e) {
       setError(`Microphone unavailable: ${(e as Error).message}`);
       reportError("microphone", e);
@@ -66,6 +87,7 @@ export default function CaptureBar({ busy, onSend }: Props) {
   };
 
   const btn = "flex h-10 min-w-10 items-center justify-center rounded-lg bg-slate-100 px-2 text-lg hover:bg-slate-200";
+  const live = "animate-pulse bg-red-500 text-white hover:bg-red-600";
   return (
     <div className="border-t border-slate-200 bg-white px-2 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
       {(file || error) && (
@@ -86,11 +108,12 @@ export default function CaptureBar({ busy, onSend }: Props) {
           📷
         </button>
         <button
-          className={`${btn} ${recording ? "animate-pulse bg-red-500 text-white hover:bg-red-600" : ""}`}
-          title={recording ? "Stop recording" : "Voice note"}
-          onClick={toggleRecord}
+          className={`${btn} ${recording === "voice" ? live : ""} disabled:opacity-40`}
+          title={recording === "voice" ? "Stop recording" : "Voice note (keeps the recording)"}
+          disabled={recording === "dictate" || transcribing}
+          onClick={() => toggleRecord("voice")}
         >
-          {recording ? "⏹" : "🎙️"}
+          {recording === "voice" ? "⏹" : "🎙️"}
         </button>
         <button className={btn} title="Video" onClick={() => videoIn.current?.click()}>
           🎬
@@ -98,9 +121,26 @@ export default function CaptureBar({ busy, onSend }: Props) {
         <button className={btn} title="File (PDF, CSV, audio, image)" onClick={() => fileIn.current?.click()}>
           📎
         </button>
+        <button
+          className={`${btn} ${recording === "dictate" ? live : ""} disabled:opacity-40`}
+          title={recording === "dictate" ? "Stop and turn it into text" : "Dictate: speak and the words appear in the text box"}
+          aria-label="Dictate a note"
+          disabled={recording === "voice" || transcribing}
+          onClick={() => toggleRecord("dictate")}
+        >
+          {recording === "dictate" ? "⏹" : "🗣️"}
+        </button>
         <input
           className="h-10 min-w-0 flex-1 rounded-lg border border-slate-300 px-3 text-sm outline-none focus:border-sky-500"
-          placeholder={file ? "Question about this file (optional)" : "Note, protocol question, or code: …"}
+          placeholder={
+            recording === "dictate"
+              ? "Listening… press ⏹ when you are done"
+              : transcribing
+                ? "Turning your speech into text…"
+                : file
+                  ? "Question about this file (optional)"
+                  : "Type or dictate 🗣️ a note, a protocol question, or code: …"
+          }
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && send()}
@@ -116,6 +156,18 @@ export default function CaptureBar({ busy, onSend }: Props) {
       <input ref={photoIn} type="file" accept="image/*" capture="environment" hidden onChange={pick} />
       <input ref={videoIn} type="file" accept="video/*" capture="environment" hidden onChange={pick} />
       <input ref={audioIn} type="file" accept="audio/*" capture hidden onChange={pick} />
+      <input
+        ref={dictIn}
+        type="file"
+        accept="audio/*"
+        capture
+        hidden
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) void dictate(f);
+          e.target.value = "";
+        }}
+      />
       <input
         ref={fileIn}
         type="file"

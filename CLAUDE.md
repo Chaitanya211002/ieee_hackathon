@@ -175,7 +175,7 @@ single-machine mode must always work. **Build and test on the M5 first; distribu
 
 ```
 backend/
-  main.py          # FastAPI app: /entry, /entries, /verify, /status, /export, /protocols, /experiments, /media, /client-log
+  main.py          # FastAPI app: /entry, /entries (GET, DELETE one), /transcribe, /verify, /status, /export, /protocols, /experiments, /media, /client-log
   events.py        # append-only event log, data/logs/events.jsonl
   router.py        # file-type routing (which pipeline, which entry type)
   nodes.py         # node health checks + run_job(): try the routed node, fall back to the M5
@@ -307,6 +307,21 @@ with no video stream → `voice`), PDF/TXT/MD → index it, and answer `text` as
 `protocol_qa` (no question → `note`), CSV/TSV + request → `analysis`, text starting with
 `code:` or a code request → `analysis`, other questions → `protocol_qa`, anything else → `note`.
 
+Two routes were added on Nov 20; neither changes the entry shape:
+
+- `DELETE /entries/{id}` takes an entry, and any follow-ups asked about it, out of the notebook.
+  No row is removed. It appends a `note` entry with `details.kind == "deletion"` and
+  `details.deleted` (a list of `{id, type, created_at, hash}`) and returns it. From then on
+  `GET /entries`, `/export` and the experiment counts leave the named entries out
+  (`Store.list_entries(include_deleted=True)` still returns them), and `/verify` still passes.
+  404 for an unknown or already deleted id, 400 for a deletion record itself.
+- `POST /transcribe` (multipart `file`) returns `{text, node, latency_s}` and creates no entry.
+  The capture bar uses it to dictate a note into the text box.
+
+Voice entries may also carry `details.unconfirmed_transcript`: words Whisper produced that the
+no-speech filters did not trust. The card shows them as low confidence; they are never used for
+the summary or for answers.
+
 The M5 ↔ WIN contract is in `docs/win-service-contract.md`; extra response keys are allowed,
 renaming or removing keys is not.
 
@@ -343,6 +358,10 @@ renaming or removing keys is not.
   stdout, and any saved plot. Never show code that hasn't been executed as "working."
 - **Hash chain:** `hash = sha256(prev_hash + canonical_json(entry_without_hash))`.
   `GET /verify` recomputes the chain and reports the first broken entry, if any.
+- **Deleting:** never delete or update a row in `entries`; that breaks every hash after it.
+  The Delete button calls `DELETE /entries/{id}`, which appends a deletion record (see the API
+  section). Do not add a way to delete a deletion record, and do not remove media files on
+  delete: the entry's hash covers their paths, and "what was deleted" must stay answerable.
 
 ## Conventions
 
@@ -388,7 +407,8 @@ renaming or removing keys is not.
   meniscus at 4.3. Readings, labels and displays need the look-closer pass.
 - Ollama reloads a model whenever `num_ctx` changes. Keep one `llm.num_ctx` for every call.
 - Browsers only allow in-page microphone recording on https or localhost. On a phone over
-  `http://<M5-IP>` the voice button opens the system recorder instead.
+  `http://<M5-IP>` the voice button opens the system recorder instead. The dictate button
+  (speech into the text box) follows the same rule.
 
 ## Priorities when time is short
 

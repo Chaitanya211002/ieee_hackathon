@@ -13,14 +13,18 @@ Built for the IEEE AI Hackathon (Multimodal LLM Challenge), Roux Institute, Nove
 | You capture | BenchLog does | Entry |
 |---|---|---|
 | Photo (plate, gel, label, anything) | Qwen3-VL describes it or answers your question. For colony questions it also runs an OpenCV blob count and shows both numbers; the VLM number is always labelled an estimate. For a reading, a label or other small detail it first looks closer: the model marks where the answer is, that part is cut from the full-resolution photo, and both images go into the answer (the card shows the crop). Follow-up questions are asked in the photo's own card and stay there as one thread, with the earlier answers as context. | `photo` |
-| Voice note or sound | Whisper transcript plus the top-3 AudioSet sound labels (AST). Sounds with confidence ≥ 0.5 show as alerts. Questions are answered from the transcript and labels. | `voice` |
+| Voice note or sound | Whisper transcript plus the top-3 AudioSet sound labels (AST). Sounds with confidence ≥ 0.5 show as alerts. Questions are answered from the transcript and labels. If the recording is too short or unclear to trust, the card still shows what was heard, marked low confidence. | `voice` |
 | Video clip | Up to 10 frames, evenly spaced from the first to the last frame, sent to Qwen3-VL in order as one sequence; the audio track (if any) goes through the audio pipeline. Follow-up questions reuse the stored frames and stay in the clip's card. | `video` |
 | Protocol PDF / text + a question | Answers only from your indexed protocols, with a section citation, or says **"Not in your indexed protocols."** | `protocol_qa` |
 | `code: …`, a CSV + a request, or "Complete this Python function…" | Qwen2.5-Coder writes Python, the sandbox runs it, errors are fed back (up to 2 retries). Code, stdout and plots are shown, and only code that actually ran is marked "Executed". | `analysis` |
-| Any other text | Saved as a log note. | `note` |
+| Any other text, typed or dictated | Saved as a log note. The dictate button turns speech into text in the box, so you can check it before sending. | `note` |
 
 Every entry is chained: `hash = sha256(prev_hash + canonical_json(entry_without_hash))`.
 `GET /verify` recomputes the chain and names the first entry that was edited or deleted.
+
+**Deleting an entry** does not remove it from the chain. Delete takes the entry (and any
+follow-ups) out of the notebook and the export, and appends a deletion record saying what was
+removed and when. The chain still verifies, and nothing can disappear without leaving a mark.
 
 ## Hardware
 

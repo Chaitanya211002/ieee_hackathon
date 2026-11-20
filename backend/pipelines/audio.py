@@ -74,12 +74,17 @@ def _local_transcribe(path: Path) -> dict[str, Any]:
             verbose=None,
         )
     limit = cfg["thresholds"]["no_speech_prob"]
+    heard = [s for s in res.get("segments", []) if s["text"].strip()]
     segs = [
         {"start": round(float(s["start"]), 2), "end": round(float(s["end"]), 2), "text": s["text"].strip()}
-        for s in res.get("segments", [])
-        if s.get("no_speech_prob", 0) < limit and s["text"].strip()
+        for s in heard
+        if s.get("no_speech_prob", 0) < limit
     ]
-    return {"text": " ".join(s["text"] for s in segs).strip(), "segments": segs, "language": res.get("language", "")}
+    out = {"text": " ".join(s["text"] for s in segs).strip(), "segments": segs, "language": res.get("language", "")}
+    doubted = " ".join(s["text"].strip() for s in heard if s.get("no_speech_prob", 0) >= limit)
+    if doubted:  # Whisper produced words here but rated the audio as probably not speech
+        out["dropped_text"] = doubted
+    return out
 
 
 def _load_ast() -> dict[str, Any]:
@@ -170,9 +175,10 @@ def analyze(path: str | Path, question: str | None = None) -> dict[str, Any]:
     labels = cl.get("labels", [])[:3]
     text = tr.get("text", "")
     speech = has_speech(labels)
+    doubted = tr.get("dropped_text", "")
     if text and not speech and len(text.split()) <= get_config()["thresholds"]["hallucination_max_words"]:
         # Short text on a clip the classifier hears no speech in is a Whisper hallucination.
-        text, tr["dropped_text"] = "", text
+        text, doubted = "", f"{text} {doubted}".strip()
 
     alerts = [lab for lab in labels if lab["score"] >= sound_conf and not SPEECH_LABELS.search(lab["label"])]
     result: dict[str, Any] = {
@@ -183,6 +189,9 @@ def analyze(path: str | Path, question: str | None = None) -> dict[str, Any]:
         "sound_alerts": alerts,
         "lab_events": cl.get("lab_events", []),
         "speech_detected": bool(text),
+        # Words Whisper produced but the filters above did not trust. Shown as low confidence, never
+        # used for the summary or for answers.
+        **({"unconfirmed_transcript": doubted} if doubted else {}),
         "transcribe_node": tr["node"],
         "classify_node": cl["node"],
         "node": tr["node"],

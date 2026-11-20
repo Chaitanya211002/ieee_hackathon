@@ -166,7 +166,7 @@ class EntryBuilder:
         from backend.pipelines import video, vision
 
         parent = self.store.get_entry(parent_id)
-        if parent is None:
+        if parent is None or parent_id in self.store.deleted_ids():
             raise ValueError(f"no entry {parent_id}")
         if parent["type"] not in ("photo", "video"):
             raise ValueError("follow-up questions work on photo and video entries")

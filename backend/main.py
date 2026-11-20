@@ -5,6 +5,10 @@ Endpoints (also served under /api for the frontend's dev proxy and built bundle)
                      (follow_up_of = id of a photo/video entry: ask another question about it)
   GET  /entries      ?experiment_id=&date=YYYY-MM-DD
   GET  /entries/{id}
+  DELETE /entries/{id}  take an entry (and its follow-ups) out of the notebook; appends a deletion
+                     record to the chain and returns it. No row is removed, so /verify still passes
+  POST /transcribe   multipart: file -> {"text", "node", "latency_s"}. Speech to text only, for
+                     dictating a note into the text box; creates no entry and stores nothing
   GET  /verify       recompute the hash chain; reports the first broken entry
   GET  /status       node health + which node serves each job + models
   GET  /export       ?date=&experiment_id= -> Markdown lab log with hashes
@@ -198,6 +202,37 @@ def get_entry(entry_id: str) -> dict:
     return to_contract(e)
 
 
+@api.delete("/entries/{entry_id}")
+def delete_entry(entry_id: str) -> dict:
+    try:
+        record = get_store().delete_entry(entry_id)
+    except KeyError:
+        raise HTTPException(404, "no such entry") from None
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from None
+    events.record("entry_deleted", entry_id=entry_id, record_id=record["id"], count=len(record["details"]["deleted"]))
+    return record
+
+
+@api.post("/transcribe")
+def transcribe(file: UploadFile = File(...)) -> dict:
+    from backend.pipelines import audio
+
+    tmp = save_upload(file.file, Path(file.filename or "dictation.webm").suffix)
+    try:
+        if tmp.stat().st_size == 0:
+            raise HTTPException(400, "uploaded file is empty")
+        r = audio.transcribe(tmp)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        events.record("transcribe_failed", file=file.filename, error=f"{type(exc).__name__}: {exc}")
+        raise HTTPException(500, f"could not transcribe: {exc}") from exc
+    finally:
+        tmp.unlink(missing_ok=True)
+    return {"text": r.get("text", ""), "node": r["node"], "latency_s": r["latency_s"]}
+
+
 @api.get("/verify")
 def verify() -> dict:
     return get_store().verify_report()
@@ -252,12 +287,14 @@ def export(date: str | None = None, experiment_id: str | None = None) -> PlainTe
     entries = store.list_entries(experiment_id, date)
     exps = {e["id"]: e["name"] for e in store.list_experiments()}
     rep = store.verify_report()
+    n_deleted = sum(len(e["details"].get("deleted", [])) for e in entries if e["details"].get("kind") == "deletion")
     lines = [
         f"# BenchLog lab log{f' — {date}' if date else ''}",
         "",
         f"- Experiment: {exps.get(experiment_id, experiment_id) if experiment_id else 'all'}",
         f"- Exported: {datetime.now().astimezone().isoformat(timespec='seconds')}",
         f"- Entries: {len(entries)}",
+        *([f"- Deleted entries: {n_deleted} (not shown; each deletion is recorded below)"] if n_deleted else []),
         f"- Hash chain: {'verified, ' + str(rep['verified']) + ' entries' if rep['ok'] else 'BROKEN at ' + str(rep['first_broken'])}",
         "- All inference ran locally on open-weight models; nothing left the lab network.",
         "",

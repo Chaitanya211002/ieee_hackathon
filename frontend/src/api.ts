@@ -22,6 +22,15 @@ export const api = {
       (r) => json<Entry[]>(r),
     ),
   createEntry: (form: FormData) => fetch(`${BASE}/entry`, { method: "POST", body: form }).then((r) => json<Entry>(r)),
+  /** Takes the entry (and its follow-ups) out of the notebook. Returns the deletion record. */
+  deleteEntry: (id: string) =>
+    fetch(`${BASE}/entries/${encodeURIComponent(id)}`, { method: "DELETE" }).then((r) => json<Entry>(r)),
+  /** Speech to text only: used to dictate a note into the text box. Nothing is stored. */
+  transcribe: (file: File) => {
+    const f = new FormData();
+    f.append("file", file, file.name);
+    return fetch(`${BASE}/transcribe`, { method: "POST", body: f }).then((r) => json<{ text: string; node: string }>(r));
+  },
   verify: () => fetch(`${BASE}/verify`).then((r) => json<VerifyReport>(r)),
   status: () => fetch(`${BASE}/status`).then((r) => json<Status>(r)),
   experiments: () => fetch(`${BASE}/experiments`).then((r) => json<Experiment[]>(r)),

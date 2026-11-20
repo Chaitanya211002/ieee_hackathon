@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, reportError, today } from "./api";
 import CaptureBar from "./components/CaptureBar";
+import { DeleteContext } from "./components/cards/CardShell";
 import EntryCard from "./components/EntryCard";
 import Sidebar from "./components/Sidebar";
 import StatusPanel from "./components/StatusPanel";
@@ -95,6 +96,21 @@ export default function App() {
     }
   };
 
+  /** Takes an entry and its follow-ups out of the notebook; the server appends a deletion record. */
+  const remove = useCallback(
+    async (entry: Entry) => {
+      try {
+        await api.deleteEntry(entry.id);
+        await refresh();
+      } catch (e) {
+        setError(`Could not delete the entry: ${(e as Error).message}`);
+        reportError(`delete ${entry.id}`, e);
+        throw e;
+      }
+    },
+    [refresh],
+  );
+
   const currentName = experiments.find((e) => e.id === current)?.name ?? current;
   const panel = (side: "left" | "right") =>
     drawer === side ? "fixed inset-y-0 z-30 w-72 shadow-xl " + (side === "left" ? "left-0" : "right-0") : "hidden";
@@ -150,15 +166,17 @@ export default function App() {
                 </p>
               </div>
             )}
-            {threads.map((t) => (
-              <EntryCard
-                key={t.root.id}
-                entry={t.root}
-                followUps={t.followUps}
-                pending={pending.some((p) => p.threadRoot === t.root.id)}
-                onAsk={(q) => send(null, q, { of: threadTail(t), root: t.root })}
-              />
-            ))}
+            <DeleteContext.Provider value={remove}>
+              {threads.map((t) => (
+                <EntryCard
+                  key={t.root.id}
+                  entry={t.root}
+                  followUps={t.followUps}
+                  pending={pending.some((p) => p.threadRoot === t.root.id)}
+                  onAsk={(q) => send(null, q, { of: threadTail(t), root: t.root })}
+                />
+              ))}
+            </DeleteContext.Provider>
             {newCaptures.map((p) => (
               <div key={p.id} className="flex items-center gap-2 rounded-xl border border-dashed border-sky-300 bg-sky-50 px-3 py-3 text-sm text-sky-800">
                 <span className="h-3 w-3 animate-spin rounded-full border-2 border-sky-600 border-t-transparent" />
