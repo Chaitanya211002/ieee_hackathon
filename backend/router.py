@@ -133,14 +133,25 @@ class EntryBuilder:
         media = self._save(path, name)
         with tempfile.TemporaryDirectory() as tmp:
             r = vision.analyze(path, q, out_dir=tmp)
-            artifacts = [{"kind": "image", "path": media}]
-            if "opencv" in r:
-                annotated = self._save(r["opencv"]["annotated_path"], "colonies_annotated.jpg")
-                r["opencv"]["annotated_path"] = annotated
-                artifacts.append({"kind": "image", "path": annotated})
+            artifacts = self._vision_artifacts(r, media)
         return {"route": "vision", "type": "photo", "summary": r["summary"],
                 "details": {**r, "media": {"kind": "image", "path": media}},
                 "artifacts": artifacts, "node": "M5"}  # fmt: skip
+
+    def _vision_artifacts(self, r: dict[str, Any], media: str) -> list[dict[str, str]]:
+        """Keep the images a vision result made (annotated plate, zoom crop) and point the result at them.
+
+        Call while the pipeline's temp folder still exists. The photo itself stays the first artifact.
+        """
+        artifacts = [{"kind": "image", "path": media}]
+        for key, field, name in (
+            ("opencv", "annotated_path", "colonies_annotated.jpg"),
+            ("zoom", "crop_path", "zoom_crop.jpg"),
+        ):
+            if key in r:
+                r[key][field] = self._save(r[key][field], name)
+                artifacts.append({"kind": "image", "path": r[key][field]})
+        return artifacts
 
     def _local(self, media_path: str) -> Path:
         """/media/<rel> URL -> file in the store's media folder."""
@@ -179,11 +190,7 @@ class EntryBuilder:
         if root["type"] == "photo":
             with tempfile.TemporaryDirectory() as tmp:
                 r = vision.analyze(self._local(media_path), q, out_dir=tmp, history=history)
-                artifacts = [{"kind": "image", "path": media_path}]
-                if "opencv" in r:
-                    annotated = self._save(r["opencv"]["annotated_path"], "colonies_annotated.jpg")
-                    r["opencv"]["annotated_path"] = annotated
-                    artifacts.append({"kind": "image", "path": annotated})
+                artifacts = self._vision_artifacts(r, media_path)
             return {"route": "vision.follow_up", "type": "photo", "summary": r["summary"],
                     "details": {**r, **thread, "media": {"kind": "image", "path": media_path}},
                     "artifacts": artifacts, "node": "M5"}  # fmt: skip

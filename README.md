@@ -12,9 +12,9 @@ Built for the IEEE AI Hackathon (Multimodal LLM Challenge), Roux Institute, Nove
 
 | You capture | BenchLog does | Entry |
 |---|---|---|
-| Photo (plate, gel, label, anything) | Qwen3-VL describes it or answers your question. For colony questions it also runs an OpenCV blob count and shows both numbers; the VLM number is always labelled an estimate. "Ask a follow-up" asks another question about the same photo with the earlier answers as context. | `photo` |
+| Photo (plate, gel, label, anything) | Qwen3-VL describes it or answers your question. For colony questions it also runs an OpenCV blob count and shows both numbers; the VLM number is always labelled an estimate. For a reading, a label or other small detail it first looks closer: the model marks where the answer is, that part is cut from the full-resolution photo, and both images go into the answer (the card shows the crop). Follow-up questions are asked in the photo's own card and stay there as one thread, with the earlier answers as context. | `photo` |
 | Voice note or sound | Whisper transcript plus the top-3 AudioSet sound labels (AST). Sounds with confidence ≥ 0.5 show as alerts. Questions are answered from the transcript and labels. | `voice` |
-| Video clip | Up to 10 frames, evenly spaced from the first to the last frame, sent to Qwen3-VL in order as one sequence; the audio track (if any) goes through the audio pipeline. Follow-up questions reuse the stored frames. | `video` |
+| Video clip | Up to 10 frames, evenly spaced from the first to the last frame, sent to Qwen3-VL in order as one sequence; the audio track (if any) goes through the audio pipeline. Follow-up questions reuse the stored frames and stay in the clip's card. | `video` |
 | Protocol PDF / text + a question | Answers only from your indexed protocols, with a section citation, or says **"Not in your indexed protocols."** | `protocol_qa` |
 | `code: …`, a CSV + a request, or "Complete this Python function…" | Qwen2.5-Coder writes Python, the sandbox runs it, errors are fed back (up to 2 retries). Code, stdout and plots are shown, and only code that actually ran is marked "Executed". | `analysis` |
 | Any other text | Saved as a log note. | `note` |
@@ -201,6 +201,11 @@ errors the browser hit (including phones), and latency per entry type. The raw d
 - **VLM counting.** Qwen3-VL miscounts crowded scenes (e.g. 3 zebras for 4). The UI always labels
   VLM counts as estimates; plates get the OpenCV count alongside. The OpenCV counter is tuned
   for separated round colonies; touching or confluent colonies are under-counted.
+- **Fine readings in photos.** Photos are downscaled to 1024 px for the model, which hides small
+  print. Questions about readings, labels and displays therefore get a second, enlarged crop
+  (`vision.zoom`), which takes 14–18 s on the M5 instead of 3–9 s. On our own lab photos it
+  fixed a burette reading (4.2 mL against a true 4.3; 6.5 before); faint or blurred markings
+  can still be missed, and the answer depends on the model boxing the right spot.
 - **Video speed.** Ollama resizes every image to a fixed ~1k tokens, and on the M5 the VLM
   prefills about 100 tokens/s, so each image costs about 10 s. Sending 10 frames separately took
   about 2 minutes, so frames are tiled in order into two labelled contact sheets
