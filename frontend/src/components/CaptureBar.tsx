@@ -4,15 +4,13 @@ import { reportError } from "../api";
 interface Props {
   busy: boolean;
   onSend: (file: File | null, text: string) => void;
-  followUp?: string | null; // label of the entry a follow-up question is about
-  onClearFollowUp?: () => void;
 }
 
 // MediaRecorder needs a secure context (https or localhost). A phone on http://<M5-IP> is not
 // one, so it falls back to the system recorder through a file input with capture.
 const canRecord = typeof window !== "undefined" && window.isSecureContext && !!navigator.mediaDevices?.getUserMedia;
 
-export default function CaptureBar({ busy, onSend, followUp, onClearFollowUp }: Props) {
+export default function CaptureBar({ busy, onSend }: Props) {
   const [file, setFile] = useState<File | null>(null);
   const [text, setText] = useState("");
   const [recording, setRecording] = useState(false);
@@ -70,16 +68,8 @@ export default function CaptureBar({ busy, onSend, followUp, onClearFollowUp }: 
   const btn = "flex h-10 min-w-10 items-center justify-center rounded-lg bg-slate-100 px-2 text-lg hover:bg-slate-200";
   return (
     <div className="border-t border-slate-200 bg-white px-2 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
-      {(file || error || followUp) && (
+      {(file || error) && (
         <div className="mb-2 flex flex-wrap items-center gap-2 text-xs">
-          {followUp && !file && (
-            <span className="flex items-center gap-1 rounded-full bg-violet-100 px-2 py-1 text-violet-900">
-              ↩ Follow-up on {followUp}
-              <button aria-label="cancel follow-up" className="ml-1 text-violet-700" onClick={onClearFollowUp}>
-                ✕
-              </button>
-            </span>
-          )}
           {file && (
             <span className="flex items-center gap-1 rounded-full bg-sky-100 px-2 py-1 text-sky-900">
               📎 {file.name} ({Math.max(1, Math.round(file.size / 1024))} KB)
@@ -110,13 +100,7 @@ export default function CaptureBar({ busy, onSend, followUp, onClearFollowUp }: 
         </button>
         <input
           className="h-10 min-w-0 flex-1 rounded-lg border border-slate-300 px-3 text-sm outline-none focus:border-sky-500"
-          placeholder={
-            file
-              ? "Question about this file (optional)"
-              : followUp
-                ? `Ask another question about the ${followUp.split(" ")[0]}…`
-                : "Note, protocol question, or code: …"
-          }
+          placeholder={file ? "Question about this file (optional)" : "Note, protocol question, or code: …"}
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && send()}

@@ -5,16 +5,18 @@ import EntryCard from "./components/EntryCard";
 import Sidebar from "./components/Sidebar";
 import StatusPanel from "./components/StatusPanel";
 import TopBar from "./components/TopBar";
+import { groupThreads, threadTail } from "./threads";
 import type { Entry, Experiment, Protocol, Status, VerifyReport } from "./types";
 
 interface Pending {
   id: number;
   label: string;
+  /** Set for a follow-up: the capture it is about, so the spinner shows inside that card. */
+  threadRoot?: string;
 }
 
 const pendingLabel = (file: File | null, text: string) => {
   if (!file) return text.toLowerCase().startsWith("code:") ? "Writing and running code…" : "Thinking…";
-  // follow-ups have no file; "Thinking…" covers them
   if (file.type.startsWith("image/")) return "Looking at the photo…";
   if (file.type.startsWith("audio/")) return "Transcribing and listening…";
   if (file.type.startsWith("video/")) return "Watching the video (about 30–40 s)…";
@@ -33,8 +35,9 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [drawer, setDrawer] = useState<"none" | "left" | "right">("none");
-  const [followUp, setFollowUp] = useState<Entry | null>(null);
   const bottom = useRef<HTMLDivElement>(null);
+  const threads = groupThreads(entries);
+  const newCaptures = pending.filter((p) => !p.threadRoot);
 
   const refresh = useCallback(async () => {
     try {
@@ -61,22 +64,29 @@ export default function App() {
     return () => clearInterval(t);
   }, []);
 
+  // A new capture goes to the bottom of the feed. A follow-up answer lands inside an earlier
+  // card instead, so the feed must not jump to the bottom for it (see `send`).
   useEffect(() => {
     bottom.current?.scrollIntoView({ behavior: "smooth" });
-  }, [entries.length, pending.length]);
+  }, [threads.length, newCaptures.length]);
 
-  const send = async (file: File | null, text: string) => {
+  /** `followUp`: ask another question about an earlier photo or video instead of adding a capture. */
+  const send = async (file: File | null, text: string, followUp?: { of: Entry; root: Entry }) => {
     const id = Date.now();
-    setPending((p) => [...p, { id, label: pendingLabel(file, text) }]);
+    setPending((p) => [...p, { id, label: pendingLabel(file, text), threadRoot: followUp?.root.id }]);
     const form = new FormData();
     if (file) form.append("file", file, file.name);
     if (text) form.append("text", text);
     form.append("experiment_id", current);
-    if (followUp && !file) form.append("follow_up_of", followUp.id);
-    setFollowUp(null);
+    if (followUp) form.append("follow_up_of", followUp.of.id);
     try {
       await api.createEntry(form);
       await refresh();
+      if (followUp) {
+        requestAnimationFrame(() =>
+          document.getElementById(`entry-${followUp.root.id}`)?.scrollIntoView({ behavior: "smooth", block: "nearest" }),
+        );
+      }
     } catch (e) {
       setError((e as Error).message);
       reportError(`send ${file ? `${file.name} (${file.type || "?"}, ${file.size} B)` : "text"}`, e);
@@ -140,10 +150,16 @@ export default function App() {
                 </p>
               </div>
             )}
-            {entries.map((e) => (
-              <EntryCard key={e.id} entry={e} onFollowUp={setFollowUp} />
+            {threads.map((t) => (
+              <EntryCard
+                key={t.root.id}
+                entry={t.root}
+                followUps={t.followUps}
+                pending={pending.some((p) => p.threadRoot === t.root.id)}
+                onAsk={(q) => send(null, q, { of: threadTail(t), root: t.root })}
+              />
             ))}
-            {pending.map((p) => (
+            {newCaptures.map((p) => (
               <div key={p.id} className="flex items-center gap-2 rounded-xl border border-dashed border-sky-300 bg-sky-50 px-3 py-3 text-sm text-sky-800">
                 <span className="h-3 w-3 animate-spin rounded-full border-2 border-sky-600 border-t-transparent" />
                 {p.label}
@@ -151,15 +167,7 @@ export default function App() {
             ))}
             <div ref={bottom} />
           </div>
-          <CaptureBar
-            busy={false}
-            onSend={send}
-            followUp={
-              followUp &&
-              `${followUp.type} from ${new Date(followUp.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
-            }
-            onClearFollowUp={() => setFollowUp(null)}
-          />
+          <CaptureBar busy={false} onSend={(file, text) => send(file, text)} />
         </main>
         <div className={`${panel("right")} border-l border-slate-200 xl:static xl:z-auto xl:block xl:w-72 xl:shadow-none`}>
           <StatusPanel status={status} entries={entries} />

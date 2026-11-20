@@ -47,6 +47,15 @@ llm:
 
 vision:
   max_side: 1024         # images are downscaled to this long side before the VLM
+  # "Look closer": for a question about a reading, label or other fine detail, the VLM first
+  # boxes the feature that decides the answer; that region is cut from the full-resolution photo
+  # and sent as a second image. Fixes readings (burette meniscus, labels, displays) that vanish
+  # at max_side. Adds one short call and a second image, so those answers take about twice as long.
+  zoom:
+    enabled: true
+    margin: 0.5          # widen the model's box by this fraction of its size on every side
+    min_margin: 0.08     # ... and by at least this fraction of the image
+    max_area_frac: 0.5   # skip the crop when it would cover more than this much of the image
 
 colonies:
   # OpenCV blob count for plates. Areas are in pixels after resizing to max_side.

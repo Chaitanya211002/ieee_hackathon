@@ -1,8 +1,8 @@
 import { useState } from "react";
 import type { Entry } from "../../types";
-import CardShell, { FollowUpBar, Question } from "./CardShell";
+import CardShell, { FollowUpThread, Question, ZoomCrop, type ThreadProps } from "./CardShell";
 
-export default function PhotoCard({ entry, onFollowUp }: { entry: Entry; onFollowUp?: (e: Entry) => void }) {
+export default function PhotoCard({ entry, ...thread }: { entry: Entry } & ThreadProps) {
   const d = entry.details;
   const cv = d.opencv;
   const [showAnnotated, setShowAnnotated] = useState(true);
@@ -31,10 +31,11 @@ export default function PhotoCard({ entry, onFollowUp }: { entry: Entry; onFollo
       )}
       <Question q={d.question} />
       <p className="whitespace-pre-wrap">{d.answer}</p>
+      <ZoomCrop path={d.zoom?.crop_path} />
       {!cv && d.vlm_count_estimate != null && (
         <p className="text-xs text-amber-700">Count is a VLM estimate, not an exact count.</p>
       )}
-      <FollowUpBar entry={entry} onFollowUp={onFollowUp} />
+      <FollowUpThread entry={entry} {...thread} />
     </CardShell>
   );
 }

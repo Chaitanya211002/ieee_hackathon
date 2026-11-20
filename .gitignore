@@ -12,3 +12,7 @@ eval/raw/
 # Practice pack archive (license: never commit)
 archive.zip
 *.zip
+
+# Our own lab photos and videos for manual testing (large, and not ours to publish)
+lab-data/
+__MACOSX/

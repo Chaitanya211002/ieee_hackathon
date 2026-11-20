@@ -106,6 +106,22 @@ still missing (item 5), so the M5 cannot reach WIN until a person adds them.
    `backend\services\win\open_firewall.bat` and choose "Run as administrator". Neither Claude
    can do this (it needs an administrator prompt). `net_info.bat` shows whether it is done.
 
+6. **Pick up the photo fixes (branch `e2e-fixes`, written on WIN on Nov 19).** They change
+   M5-owned files: `backend/pipelines/vision.py`, `backend/router.py`, `backend/config.yaml`
+   (new `vision.zoom` block) and the frontend. After the PR is merged: `git pull`, re-copy
+   `config.yaml` to `data/config.local.yaml` as in item 4 (or just add the `vision.zoom` block
+   there), then `./scripts/start_m5.sh --stop` and `./scripts/start_m5.sh`. Until the
+   orchestrator restarts, the M5 still answers burette-style readings wrongly. What was checked
+   from WIN, against the M5's Ollama, on the photos in the untracked `lab-data/` folder (15
+   questions with known answers): 13 right before, 14 right after; both burette readings are
+   now right (4.2 mL, between 4 and 5; it said 6.5 before). The one miss lists the scale numbers
+   and leaves out a faint "5". Cost: a question that triggers the look-closer pass takes
+   14–18 s instead of 3–9 s; other questions are unchanged. Not checked, and yours to run:
+   `eval/run_eval.py` on the practice pack (image rows only matter here), and one photo
+   question in the UI to see the "Looked closer at this part of the photo" crop. If the eval
+   gets worse or the demo feels slow, set `vision.zoom.enabled: false`; nothing else depends
+   on it.
+
 **Demo-day order.** Two cases:
 - *Both laptops at the venue, same network:* WIN first: join the network, `run.bat` (before
   anything else can take the GPU), then `net_info.bat`, which should end with "Nothing left to
@@ -298,8 +314,18 @@ renaming or removing keys is not.
 
 - **Image:** describe the image, answer follow-ups (`follow_up_of` = a photo or video entry id;
   the stored media plus the thread's earlier Q&A go back to the VLM; the new entry records
-  `follow_up_of`, `thread_root` and `history` in `details`). For colony counts, run the OpenCV
-  blob count alongside the VLM and return both. Never present a VLM count alone as exact.
+  `follow_up_of`, `thread_root` and `history` in `details`). Every follow-up is its own
+  hash-chained entry; the frontend groups entries by `thread_root` (`frontend/src/threads.ts`)
+  and shows them inside the photo's or video's card, with the follow-up box in that card. For
+  colony counts, run the OpenCV blob count alongside the VLM and return both. Never present a
+  VLM count alone as exact.
+- **Look closer (photos):** a question about a reading, label or other fine detail
+  (`DETAIL_RE` in `vision.py`) first asks the VLM for the bounding box of the feature that
+  decides the answer (Qwen3-VL returns 0–1000 coordinates), cuts that region from the
+  full-resolution original, and sends it as a second image with the answer call. The entry
+  gets `details.zoom` (`box`, `crop_path`, `latency_s`) and the crop as an image artifact.
+  Skipped for counting and colony questions, when no box comes back, and when the box covers
+  more than `vision.zoom.max_area_frac` of the photo. `vision.zoom.enabled: false` turns it off.
 - **Audio:** Whisper transcript plus top-3 AST labels with confidence (sigmoid scores on both
   nodes). Only surface sound events with confidence ≥ 0.5 in the summary.
 - **Video:** at most `video.max_frames` (10) frames, evenly spaced from the first to the last
@@ -354,6 +380,12 @@ renaming or removing keys is not.
   ignores `think=false` (2-3x slower).
 - Ollama resizes every image to ~1k tokens (~10 s prefill each on the M5) regardless of input
   size, so shrinking frames does not speed up video; fewer images does (`video.mode: sheets`).
+  That holds up to about 1024 px on the long side. Above it the token count grows (measured on
+  the M5: 1,052 tokens at 1024 px, 2,324 at 2048 px in 24 s, 4,015 at 3000 px in 59 s), and
+  two such requests in a row stalled the M5 for about two minutes. Do not raise
+  `vision.max_side` to make small print readable; that is what `vision.zoom` is for.
+- At `vision.max_side` a phone photo of a burette loses the scale: the model read 6.5 mL for a
+  meniscus at 4.3. Readings, labels and displays need the look-closer pass.
 - Ollama reloads a model whenever `num_ctx` changes. Keep one `llm.num_ctx` for every call.
 - Browsers only allow in-page microphone recording on https or localhost. On a phone over
   `http://<M5-IP>` the voice button opens the system recorder instead.
