@@ -122,6 +122,20 @@ still missing (item 5), so the M5 cannot reach WIN until a person adds them.
    gets worse or the demo feels slow, set `vision.zoom.enabled: false`; nothing else depends
    on it.
 
+7. **Pick up delete, dictation and the voice transcript (pushed straight to `main` on Nov 20
+   at the owner's request, no PR).** Written on WIN; it changes M5-owned files:
+   `backend/main.py`, `backend/store.py`, `backend/router.py`, `backend/pipelines/audio.py`
+   and the frontend. `git pull`, then `./scripts/start_m5.sh --stop` and `./scripts/start_m5.sh`.
+   No new dependency and no config change. What it adds is in the API contract section:
+   `DELETE /entries/{id}` (a deletion record in the chain, no row removed), `POST /transcribe`
+   (the dictate button), and `details.unconfirmed_transcript` on voice entries. Checked on WIN
+   with the orchestrator running there against the WIN speech service: a voice entry shows its
+   transcript, dictation fills the text box, delete hides the entry and `/verify` still passes;
+   `tests/test_delete_and_dictation.py` (no model needed) passes. Not checked: anything on the
+   M5, the mlx-whisper path that fills `unconfirmed_transcript`, and a real microphone (the
+   test fed a recorded clip to the recorder). Run that test file and try each of the three once
+   in the UI before the demo. The demo itself runs on the M5 alone: WIN stays at home.
+
 **Demo-day order.** Two cases:
 - *Both laptops at the venue, same network:* WIN first: join the network, `run.bat` (before
   anything else can take the GPU), then `net_info.bat`, which should end with "Nothing left to
